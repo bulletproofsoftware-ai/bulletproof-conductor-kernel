@@ -126,7 +126,7 @@ applies to each part of the surface.
 - Operate / administer it: [`ADMINISTRATOR.md`](ADMINISTRATOR.md)
 - Use it from a domain plugin: [`HOW-TO-USE.md`](HOW-TO-USE.md)
 - Dependency inventory: [`SBOM.md`](SBOM.md)
-- Security posture: [`../SECURITY.md`](../SECURITY.md) and [`threat-model-v0.1.0.md`](threat-model-v0.1.0.md)
+- Security posture: [`../SECURITY.md`](../SECURITY.md)
 - Latest security scan: [`scan/scan-report.md`](scan/scan-report.md)
 
 ---

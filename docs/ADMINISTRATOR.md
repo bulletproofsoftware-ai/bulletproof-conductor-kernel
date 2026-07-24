@@ -4,7 +4,7 @@ This guide covers operating and hardening the kernel: the agent/tool surface, th
 hooks, the audit trail, verification scripts, and the deployment preconditions an
 operator is responsible for. For the security threat model see
 [`../SECURITY.md`](../SECURITY.md) and
-[`threat-model-v0.1.0.md`](threat-model-v0.1.0.md).
+the SECURITY.md.
 
 ---
 

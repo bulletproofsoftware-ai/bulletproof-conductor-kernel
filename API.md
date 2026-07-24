@@ -1682,7 +1682,7 @@ The kernel ships a `SECURITY.md` file at the repo root. Its content is specified
 
 ### 17.1 Threat Model Summary (1-2 pages)
 
-Two- to three-page summary of the security threat model for `conductor-kernel`. References this specs/ciso-review-phase1.md (committed into the kernel repo at `docs/threat-model-v0.1.0.md`) as the canonical v0.1.0 threat model. Lists the 20 STRIDE rows verbatim (or via include), names the four CRITICAL findings (F-02, F-05, F-07, F-10) and how each is mitigated by the spec edits in the corresponding RC items, and identifies residual risks tracked as Phase N issues per CISO §6.
+Two- to three-page summary of the security threat model for `conductor-kernel`. References the project security review as the canonical threat model. Lists the 20 STRIDE rows verbatim (or via include), names the four CRITICAL findings (F-02, F-05, F-07, F-10) and how each is mitigated by the spec edits in the corresponding RC items, and identifies residual risks tracked as Phase N issues per CISO §6.
 
 ### 17.2 Coordinated Disclosure Policy
 

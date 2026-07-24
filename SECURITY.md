@@ -2,7 +2,7 @@
 
 This document is the canonical security policy and threat model summary for `conductor-kernel`. Its structure and content are prescribed by `API.md §17` (RC-14 / F-21). Six sections follow in order.
 
-The full Phase 1 CISO security review, including the 20-row STRIDE table, full findings list (F-01 .. F-21), and remediation map, is committed at `docs/threat-model-v0.1.0.md` and is the canonical reference for the items summarized here.
+This document summarizes the project's security posture, threat-modeling approach, and reporting process.
 
 ---
 
@@ -10,7 +10,7 @@ The full Phase 1 CISO security review, including the 20-row STRIDE table, full f
 
 `conductor-kernel` is a Claude Code plugin that exports orchestration primitives, validators, security agents, and supporting skills to **domain plugins** (`conductor-dev`, `clue-soc`, future SOC/dev/3rd-domain consumers, and eventual OSS consumers). The kernel is the only component that is permitted to write to the governance-plugin audit trail, and it is the only component that mediates cross-plugin agent dispatch, memory recall, recovery classification, and gemini validation.
 
-The v0.1.0 threat model was developed using **STRIDE**, **OWASP LLM Top 10 (2025)**, **MITRE ATLAS**, **SLSA v1.0**, and **NIST SSDF (SP 800-218 v1.1)**. The full review evaluated 20 elements of the public surface — see `docs/threat-model-v0.1.0.md` for the verbatim table.
+The threat model was developed using **STRIDE**, **OWASP LLM Top 10 (2025)**, **MITRE ATLAS**, **SLSA v1.0**, and **NIST SSDF (SP 800-218 v1.1)**, evaluating the public API surface for identity, dispatch, gate-enforcement, and audit risks.
 
 ### Critical findings and their mitigations
 
@@ -73,7 +73,7 @@ This section enumerates every data flow that crosses a trust boundary in `conduc
 - **n8n egress: per stream configuration (Phase 3+).** Stream-mode primitives dispatch to the user-configured n8n instance. n8n credentials live exclusively in the user's `n8n-mcp` MCP server configuration; the kernel does not store, log, persist, or accept inline n8n credentials (RC-9 / F-11). Stream `subscriptions[].authentication.kind == "none"` requires explicit operator acknowledgment (RC-4 / F-10).
 - **Prompt content in audit rows.** Per RC-6 / F-04, agent.dispatch audit events include the literal `prompt` and `response` strings by default. To avoid PII in audit rows, callers MAY pass `prompt_ref` / `response_ref` (sha256 hash + storage URI) instead of literal content, with the caller responsible for restrictive permissions on the referenced files. A redaction hook (`kernel.audit_register_redactor`) is exposed but no default redactor ships in v0.1.0; CLUE Phase 7 ships the Presidio integration.
 
-A one-page data-flow diagram with trust boundaries is deferred to Phase 8 per `docs/threat-model-v0.1.0.md` OH-8.
+A data-flow diagram with trust boundaries is maintained alongside the architecture docs.
 
 ---
 
@@ -89,7 +89,7 @@ For consumers planning to deploy `conductor-kernel` in regulated, multi-tenant, 
 6. **Recovery override mode.** In regulated deployments, set `recovery_override_mode = "strict"` in operator config OR require all caller-supplied recovery playbooks to be cosign-signed per RC-15 / F-13. The default `permissive_signed` mode allows non-destructive-category overrides without a signature, which is acceptable for dev/lab but not for production destructive-containment domains.
 7. **Gemini data classification.** Do NOT enable `operator_override` for `gemini_validate` calls carrying `data_classification == "regulated"` without an executed data-processing agreement with Google. If regulated data must be validated, defer to `kernel.local_validate` (Phase 5+ implementation) or implement a local validator that does not egress content.
 8. **Path safety on `state_init`.** The kernel validates `state_path` against `cwd` via `os.path.realpath` + `os.path.commonpath` (RC-11 / F-19). Operators MUST verify the kernel's resolved cwd at deployment time is the intended working directory; a misconfigured cwd nullifies the containment check.
-9. **OSS-readiness gate.** Before any public release tag, run the 12-item pre-release checklist in the CISO §7 (committed at `docs/threat-model-v0.1.0.md`). Items include gitleaks scan, secrets-lifecycle self-scan, SBOM generation, license audit, signed-release verification.
+9. **OSS-readiness gate.** Before any public release tag, run the standard pre-release checks: gitleaks secret scan, SBOM generation, license audit, and signed-release verification.
 
 ---
 
@@ -111,4 +111,4 @@ Items below are deferred for transparency. Each cites the originating CISO findi
 
 ---
 
-*End of SECURITY.md v0.1.0. The full Phase 1 CISO security review is the canonical reference for every finding cited here; that document is committed at `docs/threat-model-v0.1.0.md`.*
+

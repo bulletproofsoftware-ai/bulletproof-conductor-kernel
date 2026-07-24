@@ -99,7 +99,6 @@ For the threat model, coordinated disclosure policy, data-flow boundaries, and h
 | [`SECURITY.md`](SECURITY.md) | Threat model, coordinated disclosure, supported versions, data flows, hardening recommendations, known limitations. |
 | [`CHANGELOG.md`](CHANGELOG.md) | Release notes per semver. |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute — PR process, code style, signing requirements, scope guidance. |
-| [`docs/threat-model-v0.1.0.md`](docs/threat-model-v0.1.0.md) | Full Phase 1 CISO security review — 20-row STRIDE table, F-01..F-21 findings, OSS-readiness checklist. |
 | [`lib/dispatcher-core.md`](lib/dispatcher-core.md) | Canonical orchestration prose duplicated by domain command files via BEGIN_CANONICAL / END_CANONICAL markers. |
 | [`examples/example-domain/`](examples/example-domain/) | Reference domain plugin demonstrating the integration contract end-to-end. |
 
