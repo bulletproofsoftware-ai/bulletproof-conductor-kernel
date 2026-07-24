@@ -1,0 +1,34 @@
+conductor-kernel — gitleaks v0.1.0 scan
+=========================================
+
+Scan date: 2026-05-13 (post-history-rewrite)
+Tool:      gitleaks 8.30.0
+Config:    .gitleaks.toml (default rules + allowlist for <example-placeholder>)
+Scope:     Full working tree + 21-commit git history
+
+Result
+------
+NO LEAKS FOUND.
+
+History context
+---------------
+A pedagogical "NEVER DO THIS" anti-pattern in agents/ciso.md (around
+line 1392) historically contained a literal placeholder string
+(sk- followed by digits 1-7 concatenated with letters a-f). Although
+this string never represented a real credential and the literal pattern
+shifted only one alpha character beyond what gitleaks treats as a
+generic-api-key match, the kernel maintained a zero-findings policy and
+rewrote history with git-filter-repo to replace the literal with the
+allowlisted token <example-placeholder>.
+
+Recovery
+--------
+The pre-rewrite tag is preserved locally as
+  pre-history-rewrite-<timestamp>
+to allow recovery of any pre-rewrite hash references. The replacement
+is byte-for-byte equivalent to the post-scrub working tree state at
+the time of the rewrite.
+
+Re-run instructions
+-------------------
+gitleaks detect --source . --config .gitleaks.toml --verbose

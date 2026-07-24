@@ -1,0 +1,22 @@
+title = "conductor-kernel gitleaks configuration"
+# Phase 8 OSS-readiness configuration for the v0.1.0 public release per
+# docs/threat-model-v0.1.0.md §7 item 2 (zero gitleaks findings).
+
+# Inherit defaults from upstream gitleaks rules.
+[extend]
+useDefault = true
+
+# Documentation-only allowlist for explicit "DO NOT DO THIS" examples
+# that exist solely to show insecure patterns. These are not secrets and
+# never were — they are pedagogical anti-patterns embedded in agent prose.
+[allowlist]
+description = "Anti-pattern examples in documentation that intentionally show insecure values"
+paths = [
+  # No file-level allowlist by default — keep findings file-scoped via regexes.
+]
+
+# Regex-scoped allowlist (matches the secret value, not the line context).
+regexes = [
+  # Placeholder used in CISO agent prose to demonstrate hardcoded secret anti-pattern.
+  '''<example-placeholder>''',
+]

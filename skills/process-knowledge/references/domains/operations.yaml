@@ -1,0 +1,83 @@
+# Operations Domain — Process Knowledge
+# n8n workflows, memory management, Qdrant operations
+
+domain: operations
+description: "Operations knowledge — n8n workflows, memory system management, Qdrant maintenance"
+
+rules:
+  - id: "OPS-N8N-001"
+    domain: "operations.n8n_workflows"
+    name: "Workflow error notification"
+    condition: "workflow_consecutive_failures >= 3"
+    action: "send_alert AND check_dependencies AND create_dead_letter_entry"
+    source: "Event-driven automation PRD 13"
+    effective_date: "2026-04-16"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["n8n", "alerting", "failure"]
+    priority: 2
+
+  - id: "OPS-QDRANT-001"
+    domain: "operations.qdrant"
+    name: "Collection size monitoring"
+    condition: "collection_point_count > 100000"
+    action: "trigger_pruning_workflow AND log_warning"
+    source: "Memory management experience"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["qdrant", "size", "pruning"]
+    priority: 3
+
+  - id: "OPS-MEM-001"
+    domain: "operations.memory_management"
+    name: "Memory deduplication threshold"
+    condition: "similarity_score > 0.95 AND same_collection == true"
+    action: "merge_memories AND preserve_higher_importance"
+    source: "Memory consolidation workflow design"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["memory", "dedup", "consolidation"]
+    priority: 3
+
+sops:
+  - id: "OPS-QDRANT-SOP-001"
+    domain: "operations.qdrant"
+    name: "Qdrant collection maintenance"
+    source: "Operational experience"
+    last_verified: "2026-04-10"
+    status: active
+    steps:
+      - action: "Check collection sizes via API"
+        verification: "curl localhost:6333/collections | jq '.result.collections[].name'"
+      - action: "Review point counts per collection"
+        verification: "curl localhost:6333/collections/{name} | jq '.result.points_count'"
+      - action: "Run pruning if any collection exceeds threshold"
+        verification: "Trigger active-pruning n8n workflow"
+      - action: "Create snapshot after maintenance"
+        verification: "curl -X POST localhost:6333/snapshots"
+
+  - id: "OPS-N8N-SOP-001"
+    domain: "operations.n8n_workflows"
+    name: "n8n workflow debugging"
+    source: "Operational experience"
+    last_verified: "2026-04-15"
+    status: active
+    steps:
+      - action: "Check n8n execution history for errors"
+        verification: "n8n MCP tool: n8n_list_executions with status=error"
+      - action: "Read execution details for failed run"
+        verification: "n8n MCP tool: n8n_get_execution"
+      - action: "Check dependent service health"
+        verification: "curl health endpoints for Qdrant, Claude API"
+      - action: "Fix root cause and manually trigger workflow"
+        verification: "n8n MCP tool: n8n_trigger_webhook_workflow"
+      - action: "Verify successful execution"
+        verification: "Check execution history shows success"
+
+decision_trees: []
+edge_cases: []

@@ -1,0 +1,107 @@
+{
+  "name": "n8n-audit-emitter",
+  "_meta": {
+    "version": "0.3.0-phase3",
+    "phase": "Phase 3 implementation (replaces Phase 1 stub)",
+    "implements": "REQ-XCT-002, REQ-KER-018, RC-5, RC-12 / F-12",
+    "purpose": "Reusable n8n Code+HTTP node pair that emits a kernel audit row to governance-plugin/state/audit.db via the kernel.audit_emit HTTP endpoint, with HMAC-token authentication and the F-12 parent_id composition '<stream_id>:<n8n_node_id>'.",
+    "usage": "Import the two nodes below into any n8n workflow that needs to emit audit events. Wire your workflow's data into the Code node input. The Code node computes parent_id, attaches required fields, and signs the row; the HTTP node POSTs to kernel.audit_emit and returns the event_id.",
+    "credentials_required": [
+      "KERNEL_AUDIT_TOKEN env var (HMAC shared secret per RC-5). NOT stored in this template — operator configures via n8n credentials store or env."
+    ],
+    "endpoint": "POST {KERNEL_AUDIT_ENDPOINT}/audit/emit (default http://localhost:5681/audit/emit; governance-plugin Phase N exposes this).",
+    "error_codes": [
+      "AUDIT-001 unsigned_row — HMAC token missing or invalid (governance write boundary rejects)",
+      "KER-AE-001 audit.db unreachable — endpoint cannot reach the database",
+      "KER-AE-002 missing required payload field — schema validation failed at endpoint",
+      "KER-AE-003 audit_hmac_token_missing — env var KERNEL_AUDIT_TOKEN absent",
+      "KER-AE-004 audit_payload_mixed_forms — prompt + prompt_ref both supplied"
+    ],
+    "schema_ref": "../schemas/events/audit-event.schema.json"
+  },
+  "nodes": [
+    {
+      "id": "audit-emitter-code",
+      "name": "Build Audit Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// kernel-audit-emitter — Phase 3 implementation\n//\n// REQ-XCT-002 / REQ-KER-018 / RC-5 / RC-12 / F-12\n//\n// Inputs (from previous node's $json):\n//   event_type           : string (required) — e.g., 'agent.dispatch', 'stream.event_handled'\n//   trace_id             : string (required) — inherited from upstream\n//   stream_id            : string (required) — n8n workflow id ($workflow.id)\n//   payload              : object (required) — event-specific payload (see schemas/events/audit-event.schema.json)\n//\n// Outputs (passed to next node):\n//   { auditRow: { ... }, hmacSignature: '<hex>', endpoint: '<url>' }\n//\n// The HMAC token is read from $env.KERNEL_AUDIT_TOKEN. If missing, this\n// node throws KER-AE-003 so the failure surfaces in the n8n execution\n// rather than silently producing an unsigned row.\n\nconst crypto = require('crypto');\n\nconst inp = $input.first().json || {};\nconst event_type = inp.event_type;\nconst trace_id = inp.trace_id;\nconst stream_id = inp.stream_id || $workflow.id;\nconst userPayload = inp.payload || {};\n\nif (!event_type) {\n  throw new Error('KER-AE-002 missing required payload field: event_type');\n}\nif (!trace_id) {\n  throw new Error('KER-AE-002 missing required payload field: trace_id');\n}\nif (!stream_id) {\n  throw new Error('KER-AE-002 missing required payload field: stream_id (n8n workflow id)');\n}\n\n// F-12 parent_id composition: '<stream_id>:<n8n_node_id>'.\n// n8n exposes the current node id via $node.id (the internal node identifier,\n// stable across renames). $execution.id is the per-execution id and is also\n// recorded so cross-execution traces resolve.\nconst node_id = ($node && $node.id) || ($node && $node.name) || 'unknown';\nconst parent_id = `${stream_id}:${node_id}`;\n\nif (!parent_id.match(/^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/)) {\n  throw new Error(\n    `KER-AE-002 parent_id failed F-12 pattern: ${parent_id} ` +\n    `(must be '<stream_id>:<n8n_node_id>', both [A-Za-z0-9_-]+)`\n  );\n}\n\n// Mutual exclusion check (RC-6 / F-04)\nif (userPayload.prompt && userPayload.prompt_ref) {\n  throw new Error('KER-AE-004 audit_payload_mixed_forms (prompt + prompt_ref)');\n}\nif (userPayload.response && userPayload.response_ref) {\n  throw new Error('KER-AE-004 audit_payload_mixed_forms (response + response_ref)');\n}\n\nconst timestamp = userPayload.timestamp || new Date().toISOString();\n\nconst auditRow = {\n  event_type,\n  trace_id,\n  parent_id,\n  timestamp,\n  // Optional fields, only set when supplied to avoid schema 'null vs absent' confusion\n  ...(userPayload.model_version !== undefined && { model_version: userPayload.model_version }),\n  ...(userPayload.system_prompt_hash !== undefined && { system_prompt_hash: userPayload.system_prompt_hash }),\n  ...(userPayload.prompt !== undefined && { prompt: userPayload.prompt }),\n  ...(userPayload.prompt_ref !== undefined && { prompt_ref: userPayload.prompt_ref }),\n  ...(userPayload.response !== undefined && { response: userPayload.response }),\n  ...(userPayload.response_ref !== undefined && { response_ref: userPayload.response_ref }),\n  ...(userPayload.tool_calls !== undefined && { tool_calls: userPayload.tool_calls }),\n  ...(userPayload.cot !== undefined && { cot: userPayload.cot }),\n  ...(userPayload.confidence !== undefined && { confidence: userPayload.confidence }),\n  ...(userPayload.untrusted_regions !== undefined && { untrusted_regions: userPayload.untrusted_regions }),\n  ...(userPayload.budget_echo !== undefined && { budget_echo: userPayload.budget_echo }),\n  ...(userPayload.tokens_used !== undefined && { tokens_used: userPayload.tokens_used }),\n  ...(userPayload.cost_usd !== undefined && { cost_usd: userPayload.cost_usd })\n};\n\n// RC-5: HMAC-SHA256 over canonical JSON, key = KERNEL_AUDIT_TOKEN.\n// The governance-plugin write boundary recomputes this and rejects with\n// AUDIT-001 unsigned_row if it does not match.\n//\n// NOTE: Ed25519 signing (per RC-5 'Ed25519 row-signed') is performed by the\n// governance-plugin write boundary itself — it owns the kernel private key.\n// The n8n emitter holds only the HMAC shared secret used to authenticate\n// AS the kernel; governance-plugin then Ed25519-signs the row before commit.\n// This separates emitter-authentication from row-integrity.\nconst token = $env.KERNEL_AUDIT_TOKEN || (typeof process !== 'undefined' && process.env && process.env.KERNEL_AUDIT_TOKEN);\nif (!token) {\n  throw new Error('KER-AE-003 audit_hmac_token_missing — set KERNEL_AUDIT_TOKEN env var on the n8n instance');\n}\n\nconst canonical = JSON.stringify(auditRow, Object.keys(auditRow).sort());\nconst hmacSignature = crypto\n  .createHmac('sha256', token)\n  .update(canonical, 'utf8')\n  .digest('hex');\n\nconst endpoint = $env.KERNEL_AUDIT_ENDPOINT || 'http://localhost:5681/audit/emit';\n\nreturn [\n  {\n    json: {\n      auditRow,\n      hmacSignature,\n      endpoint,\n      // Surface useful metadata for downstream logging / debugging\n      _meta: {\n        n8n_execution_id: $execution.id,\n        n8n_node_id: node_id,\n        n8n_workflow_id: $workflow.id,\n        canonical_bytes: canonical.length\n      }\n    }\n  }\n];\n"
+      }
+    },
+    {
+      "id": "audit-emitter-http",
+      "name": "POST kernel.audit_emit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.endpoint}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.auditRow) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kernel-Audit-Signature",
+              "value": "=sha256={{$json.hmacSignature}}"
+            },
+            {
+              "name": "X-Kernel-Audit-Source",
+              "value": "=n8n:{{$json._meta.n8n_workflow_id}}:{{$json._meta.n8n_node_id}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000,
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": false
+            }
+          },
+          "retry": {
+            "enabled": true,
+            "retryConfig": {
+              "attempts": 2,
+              "delayBetweenAttempts": 1000
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Build Audit Row": {
+      "main": [
+        [
+          {
+            "node": "POST kernel.audit_emit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "_integration_notes": {
+    "fallback_when_endpoint_unavailable": "If kernel.audit_emit HTTP endpoint is not yet shipped by governance-plugin (Phase N), operators may swap the second node for an n8n-nodes-base.executeCommand node that shells out to: sqlite3 ~/Code/governance-plugin/state/audit.db \"INSERT INTO audit_events ...\". This is a v0.1.0-only workaround; Phase N's HMAC-token boundary is the production path.",
+    "kernel_audit_endpoint_responsibility": "The HTTP endpoint kernel.audit_emit is owned by governance-plugin (per RC-5 implementation coordination note in API.md §6). The kernel publishes the contract; governance-plugin lands the listener. Until then, operators run the executeCommand fallback OR import the rows via a cron task that drains a queue file.",
+    "credential_lifecycle": "KERNEL_AUDIT_TOKEN is a kernel-managed HMAC shared secret. It rotates on operator policy. Distribution to n8n is operator's responsibility — typical patterns: (a) Docker compose env var, (b) n8n Credential 'Header Auth' wrapping a static value, (c) HashiCorp Vault integration via the n8n Vault node. The TEMPLATE NEVER stores the token.",
+    "f12_parent_id_validation": "The Code node enforces the F-12 pattern '<stream_id>:<n8n_node_id>' via regex BEFORE signing. Any audit row that fails the pattern is rejected at the emitter, preventing malformed parent_ids from reaching the audit bus.",
+    "trace_id_propagation": "Workflows that span multiple stages must propagate trace_id explicitly. Pattern: the first node in a workflow chain reads trace_id from $('Webhook').first().json.headers['x-trace-id'] or generates a UUID; subsequent audit emissions inherit it via $('Build Audit Row').first().json.auditRow.trace_id."
+  }
+}

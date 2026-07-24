@@ -1,0 +1,259 @@
+# Workflow Registry — Catalog of all n8n workflows with operational metadata
+# Used by conductor-event-router for dispatch and health monitoring
+# Environment-specific fields (health_endpoint, cron schedules) are defaults
+# for the canonical deployment. Override via n8n environment variables.
+
+version: "1.0"
+description: "Centralized registry of all 15 n8n workflows with scheduling, dependencies, and SLA metadata"
+
+workflows:
+  # Scheduled workflows — Cron-triggered
+  session-extraction:
+    id: "n8n-wf-001"
+    name: "Session Extraction"
+    description: "Extract memories from completed Claude Code sessions"
+    schedule: "every 2 hours"
+    cron: "0 */2 * * *"
+    triggers: ["session.end", "schedule.session_extraction"]
+    inputs: ["session_id", "session_path"]
+    outputs: ["extracted_memories"]
+    dependencies: ["qdrant", "claude-api"]
+    sla_minutes: 10
+    failure_action: "retry_then_alert"
+    priority: high
+    enabled: true
+
+  memory-compaction:
+    id: "n8n-wf-002"
+    name: "Memory Compaction"
+    description: "Compress and consolidate duplicate/redundant memories"
+    schedule: "every 6 hours"
+    cron: "0 */6 * * *"
+    triggers: ["schedule.compaction"]
+    inputs: []
+    outputs: ["consolidated_count", "promoted_count"]
+    dependencies: ["qdrant"]
+    sla_minutes: 30
+    failure_action: "alert"
+    priority: medium
+    enabled: true
+
+  # schedule.daily is a fan-out event. Cron field is authoritative for timing.
+  # Trigger event is for manual/fallback invocation only.
+  predictive-patterns:
+    id: "n8n-wf-003"
+    name: "Predictive Patterns"
+    description: "Analyze trajectory patterns for workload prediction"
+    schedule: "daily at 06:00"
+    cron: "0 6 * * *"
+    triggers: ["schedule.daily"]
+    inputs: []
+    outputs: ["workload_profiles", "pattern_updates"]
+    dependencies: ["qdrant"]
+    sla_minutes: 20
+    failure_action: "alert"
+    priority: medium
+    enabled: true
+
+  hippocampal-consolidation:
+    id: "n8n-wf-004"
+    name: "Hippocampal Consolidation"
+    description: "Promote important short-term memories to long-term storage"
+    schedule: "daily at 03:00"
+    cron: "0 3 * * *"
+    triggers: ["schedule.daily"]
+    inputs: []
+    outputs: ["promoted_count", "decayed_count"]
+    dependencies: ["qdrant"]
+    sla_minutes: 30
+    failure_action: "alert"
+    priority: medium
+    enabled: true
+
+  ttl-sweep:
+    id: "n8n-wf-005"
+    name: "TTL Sweep"
+    description: "Remove expired memories based on TTL policy"
+    schedule: "daily at 04:00"
+    cron: "0 4 * * *"
+    triggers: ["schedule.daily"]
+    inputs: []
+    outputs: ["removed_count"]
+    dependencies: ["qdrant"]
+    sla_minutes: 15
+    failure_action: "alert"
+    priority: low
+    enabled: true
+
+  tier-transfer:
+    id: "n8n-wf-006"
+    name: "Tier Transfer"
+    description: "Move memories between storage tiers based on access patterns"
+    schedule: "daily at 05:00"
+    cron: "0 5 * * *"
+    triggers: ["schedule.daily"]
+    inputs: []
+    outputs: ["transferred_count"]
+    dependencies: ["qdrant"]
+    sla_minutes: 20
+    failure_action: "alert"
+    priority: low
+    enabled: true
+
+  stigmergy-decay:
+    id: "n8n-wf-007"
+    name: "Stigmergy Decay"
+    description: "Apply decay functions to stigmergic memory markers"
+    schedule: "daily at 02:00"
+    cron: "0 2 * * *"
+    triggers: ["schedule.daily"]
+    inputs: []
+    outputs: ["decayed_count"]
+    dependencies: ["qdrant"]
+    sla_minutes: 10
+    failure_action: "alert"
+    priority: low
+    enabled: true
+
+  active-pruning:
+    id: "n8n-wf-008"
+    name: "Active Pruning"
+    description: "Prune low-value memories to manage collection sizes"
+    schedule: "weekly on Sunday at 01:00"
+    cron: "0 1 * * 0"
+    triggers: ["schedule.weekly"]
+    inputs: []
+    outputs: ["pruned_count", "space_freed_mb"]
+    dependencies: ["qdrant"]
+    sla_minutes: 60
+    failure_action: "alert"
+    priority: medium
+    enabled: true
+
+  hierarchical-abstraction:
+    id: "n8n-wf-009"
+    name: "Hierarchical Abstraction"
+    description: "Create abstract summaries from clusters of related memories"
+    schedule: "weekly on Saturday at 02:00"
+    cron: "0 2 * * 6"
+    triggers: ["schedule.weekly"]
+    inputs: []
+    outputs: ["abstractions_created"]
+    dependencies: ["qdrant", "claude-api"]
+    sla_minutes: 45
+    failure_action: "alert"
+    priority: medium
+    enabled: true
+
+  permission-review:
+    id: "n8n-wf-010"
+    name: "Permission Review"
+    description: "Audit memory access permissions and classifications"
+    schedule: "weekly on Friday at 18:00"
+    cron: "0 18 * * 5"
+    triggers: ["schedule.weekly"]
+    inputs: []
+    outputs: ["review_report"]
+    dependencies: ["qdrant"]
+    sla_minutes: 15
+    failure_action: "alert"
+    priority: low
+    enabled: true
+
+  monthly-review:
+    id: "n8n-wf-011"
+    name: "Monthly Review"
+    description: "Comprehensive monthly memory system health review"
+    schedule: "1st of month at 00:00"
+    cron: "0 0 1 * *"
+    triggers: ["schedule.monthly"]
+    inputs: []
+    outputs: ["monthly_report"]
+    dependencies: ["qdrant"]
+    sla_minutes: 60
+    failure_action: "alert"
+    priority: low
+    enabled: true
+
+  # Webhook-triggered workflows
+  memory-gateway:
+    id: "n8n-wf-012"
+    name: "Memory Gateway"
+    description: "External memory storage gateway via webhook"
+    schedule: null
+    triggers: ["memory.store"]
+    inputs: ["memory_type", "content", "metadata"]
+    outputs: ["stored_id"]
+    dependencies: ["qdrant"]
+    sla_minutes: 1
+    failure_action: "retry_then_alert"
+    priority: high
+    enabled: true
+
+  # On-demand workflows
+  benchmark-regression:
+    id: "n8n-wf-013"
+    name: "Benchmark Regression"
+    description: "Run memory benchmark suite and check for regressions"
+    schedule: null
+    triggers: ["agent.benchmark"]
+    inputs: ["benchmark_suite"]
+    outputs: ["benchmark_results", "regression_detected"]
+    dependencies: ["qdrant"]
+    sla_minutes: 30
+    failure_action: "alert"
+    priority: medium
+    enabled: true
+
+  compliance-report:
+    id: "n8n-wf-014"
+    name: "Compliance Report"
+    description: "Generate governance compliance report"
+    schedule: null
+    triggers: ["governance.report_request"]
+    inputs: ["report_type", "date_range"]
+    outputs: ["compliance_report"]
+    dependencies: ["qdrant", "audit-db"]
+    sla_minutes: 15
+    failure_action: "alert"
+    priority: high
+    enabled: true
+
+  skill-discovery:
+    id: "n8n-wf-015"
+    name: "Skill Discovery"
+    description: "Discover and catalog new skills from installed plugins"
+    schedule: "weekly on Monday at 08:00"
+    cron: "0 8 * * 1"
+    triggers: ["schedule.weekly"]
+    inputs: []
+    outputs: ["discovered_skills"]
+    dependencies: ["qdrant"]
+    sla_minutes: 10
+    failure_action: "alert"
+    priority: low
+    enabled: true
+
+# Dependency mapping — which workflows break when a service goes down
+dependency_impact:
+  qdrant:
+    affected_workflows: "all"
+    severity: "critical"
+    mitigation: "All memory operations halt. Queue events for replay after recovery."
+
+  claude-api:
+    affected_workflows: ["session-extraction", "hierarchical-abstraction"]
+    severity: "high"
+    mitigation: "Extraction and abstraction workflows skip. Other workflows unaffected."
+
+  audit-db:
+    affected_workflows: ["compliance-report"]
+    severity: "medium"
+    mitigation: "Compliance reports delayed. Governance continues with local logging."
+
+# Health check configuration per workflow
+health:
+  check_interval_seconds: 300
+  metrics_window_hours: 24
+  sla_alert_threshold_pct: 90
+  consecutive_failure_alert: 3

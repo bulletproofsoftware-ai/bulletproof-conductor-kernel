@@ -1,0 +1,35 @@
+{
+  "name": "example-domain",
+  "version": "0.1.0",
+  "description": "Minimal reference domain plugin showing how a downstream consumer integrates with conductor-kernel. Implements a single 'example' slash command that dispatches a 'example-agent' which delegates validation to conductor-kernel:critic. Read examples/example-domain/README.md before extending.",
+  "homepage": "https://github.com/bulletproofsoftware-ai/conductor-kernel/blob/main/examples/example-domain/",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "conductor-kernel maintainers",
+      "comment": "Reference example — not a published plugin"
+    }
+  ],
+  "keywords": [
+    "conductor-kernel",
+    "example",
+    "reference-implementation"
+  ],
+  "engines": {
+    "conductor-kernel": ">=0.1.0",
+    "claude-code": ">=1.0.0"
+  },
+  "peerDependencies": {
+    "conductor-kernel": ">=0.1.0",
+    "governance-plugin": ">=0.1.0"
+  },
+  "exports": {
+    "commands": "commands/",
+    "agents": "agents/"
+  },
+  "_meta": {
+    "purpose": "Onboard a new contributor to conductor-kernel in under 30 minutes. Demonstrates: (1) plugin manifest shape; (2) slash-command verb dispatch into a domain agent; (3) cross-plugin dispatch into a kernel-provided validator; (4) audit-event emission via kernel.audit_emit. Does NOT demonstrate stream-mode, recovery, or memory primitives — see API.md for the full surface.",
+    "phase": "Phase 8 — OSS readiness reference example",
+    "reference": "PRD-20 §8 Phase 8 exit + REQ-XCT-011/REQ-XCT-014"
+  }
+}

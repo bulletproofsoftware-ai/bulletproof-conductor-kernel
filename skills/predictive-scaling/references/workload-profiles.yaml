@@ -1,0 +1,122 @@
+# Workload Profiles — Historical pattern templates for workload prediction
+# Updated daily by n8n predictive-patterns workflow
+
+version: "1.0"
+description: "Weekly workload profiles based on historical trajectory analysis"
+# Default profiles are illustrative placeholders. Replaced by learned patterns
+# from Qdrant trajectory analysis after system accumulates actual usage data.
+
+# Default profiles (overridden by learned patterns)
+default_profiles:
+  monday:
+    morning: # 06:00-12:00
+      predicted_tier_distribution: { TRIVIAL: 0.10, MINOR: 0.25, STANDARD: 0.45, MAJOR: 0.20 }
+      predicted_agent_count: 8
+      predicted_token_consumption: 300000
+      description: "Heavy start — project kickoffs, planning"
+    afternoon: # 12:00-18:00
+      predicted_tier_distribution: { TRIVIAL: 0.15, MINOR: 0.35, STANDARD: 0.35, MAJOR: 0.15 }
+      predicted_agent_count: 6
+      predicted_token_consumption: 200000
+      description: "Moderate — implementation and review"
+    evening: # 18:00-00:00
+      predicted_tier_distribution: { TRIVIAL: 0.30, MINOR: 0.40, STANDARD: 0.25, MAJOR: 0.05 }
+      predicted_agent_count: 3
+      predicted_token_consumption: 80000
+      description: "Light — documentation and minor tasks"
+
+  tuesday:
+    morning:
+      predicted_tier_distribution: { TRIVIAL: 0.10, MINOR: 0.30, STANDARD: 0.40, MAJOR: 0.20 }
+      predicted_agent_count: 7
+      predicted_token_consumption: 250000
+    afternoon:
+      predicted_tier_distribution: { TRIVIAL: 0.15, MINOR: 0.35, STANDARD: 0.35, MAJOR: 0.15 }
+      predicted_agent_count: 6
+      predicted_token_consumption: 200000
+    evening:
+      predicted_tier_distribution: { TRIVIAL: 0.35, MINOR: 0.40, STANDARD: 0.20, MAJOR: 0.05 }
+      predicted_agent_count: 3
+      predicted_token_consumption: 70000
+
+  wednesday:
+    morning:
+      predicted_tier_distribution: { TRIVIAL: 0.10, MINOR: 0.30, STANDARD: 0.40, MAJOR: 0.20 }
+      predicted_agent_count: 7
+      predicted_token_consumption: 250000
+    afternoon:
+      predicted_tier_distribution: { TRIVIAL: 0.15, MINOR: 0.35, STANDARD: 0.35, MAJOR: 0.15 }
+      predicted_agent_count: 6
+      predicted_token_consumption: 200000
+    evening:
+      predicted_tier_distribution: { TRIVIAL: 0.40, MINOR: 0.35, STANDARD: 0.20, MAJOR: 0.05 }
+      predicted_agent_count: 2
+      predicted_token_consumption: 60000
+
+  thursday:
+    morning:
+      predicted_tier_distribution: { TRIVIAL: 0.10, MINOR: 0.25, STANDARD: 0.40, MAJOR: 0.25 }
+      predicted_agent_count: 8
+      predicted_token_consumption: 280000
+      description: "Pre-deadline push — higher complexity"
+    afternoon:
+      predicted_tier_distribution: { TRIVIAL: 0.10, MINOR: 0.30, STANDARD: 0.40, MAJOR: 0.20 }
+      predicted_agent_count: 7
+      predicted_token_consumption: 250000
+    evening:
+      predicted_tier_distribution: { TRIVIAL: 0.30, MINOR: 0.40, STANDARD: 0.25, MAJOR: 0.05 }
+      predicted_agent_count: 3
+      predicted_token_consumption: 80000
+
+  friday:
+    morning:
+      predicted_tier_distribution: { TRIVIAL: 0.20, MINOR: 0.35, STANDARD: 0.30, MAJOR: 0.15 }
+      predicted_agent_count: 5
+      predicted_token_consumption: 180000
+      description: "Wrap-up — reviews and documentation"
+    afternoon:
+      predicted_tier_distribution: { TRIVIAL: 0.30, MINOR: 0.40, STANDARD: 0.25, MAJOR: 0.05 }
+      predicted_agent_count: 3
+      predicted_token_consumption: 100000
+    evening:
+      predicted_tier_distribution: { TRIVIAL: 0.50, MINOR: 0.35, STANDARD: 0.10, MAJOR: 0.05 }
+      predicted_agent_count: 2
+      predicted_token_consumption: 50000
+
+  # Weekend profiles use all_day format. Consumers must handle both 3-period and all_day formats.
+  saturday:
+    all_day:
+      predicted_tier_distribution: { TRIVIAL: 0.30, MINOR: 0.40, STANDARD: 0.25, MAJOR: 0.05 }
+      predicted_agent_count: 3
+      predicted_token_consumption: 80000
+      description: "Weekend — personal projects, exploration"
+
+  sunday:
+    all_day:
+      predicted_tier_distribution: { TRIVIAL: 0.40, MINOR: 0.35, STANDARD: 0.20, MAJOR: 0.05 }
+      predicted_agent_count: 2
+      predicted_token_consumption: 50000
+
+# Session prediction algorithm
+session_prediction:
+  trigger_after_tasks: 3
+  update_interval_tasks: 3
+  algorithm: |
+    1. Compute average tier score of last 3 tasks
+    2. Look up current day/time workload profile
+    3. Blend session signal (60% weight) with profile (40% weight)
+    4. Produce: predicted tier, predicted agent count, predicted tokens
+    5. Assign confidence: min(0.95, 0.5 + 0.15 * task_count)
+    # NOTE: Confidence ceiling reached at task_count=3. For better discrimination,
+    # consider basing confidence on tier_variance: min(0.95, 0.5 + 0.1*count - 0.1*variance)
+  confidence_floor: 0.50
+  confidence_ceiling: 0.95
+
+# Profile learning
+learning:
+  update_frequency: "daily"
+  n8n_workflow: "predictive-patterns"
+  data_source: "Qdrant trajectory collection"
+  lookback_days: 30
+  smoothing: "exponential_moving_average"
+  alpha: 0.3

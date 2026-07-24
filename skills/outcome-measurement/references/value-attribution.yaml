@@ -1,0 +1,113 @@
+# Value Attribution Framework — Maps outcome metrics to business value
+# Baselines must be configured per project by the operator
+
+version: "1.0"
+description: "Value attribution framework with configurable baselines for ROI calculation"
+
+value_categories:
+  time_value:
+    name: "Time Value"
+    description: "Value of time saved through automation"
+    metric: "time_to_resolution"
+    formula: "(baseline_hours - actual_hours) * hourly_rate"
+    baseline_required:
+      baseline_hours: "Manual hours for equivalent task"
+      hourly_rate: "Loaded hourly rate (salary + overhead)"
+    example:
+      baseline_hours: 4.0
+      actual_hours: 0.2
+      hourly_rate: 150
+      value: 570.00
+
+  quality_value:
+    name: "Quality Value"
+    description: "Value of reduced errors and higher quality output"
+    metric: "first_pass_success_rate"
+    formula: "(baseline_error_rate - actual_error_rate) * cost_per_error"
+    baseline_required:
+      baseline_error_rate: "Manual error rate for equivalent tasks"
+      cost_per_error: "Average cost to fix an error (rework time + downstream impact)"
+    example:
+      baseline_error_rate: 0.30
+      actual_error_rate: 0.12
+      cost_per_error: 200
+      value: 36.00
+      # Example shows per-task value. Total value = per_task_value × task_count
+
+  throughput_value:
+    name: "Throughput Value"
+    description: "Value of increased task completion volume"
+    metric: "task_completion_rate"
+    formula: "tasks_completed * estimated_manual_hours_per_task * hourly_rate"
+    baseline_required:
+      estimated_manual_hours_per_task: "Average manual hours per task type"
+      hourly_rate: "Loaded hourly rate"
+    example:
+      tasks_completed: 25
+      manual_hours_per_task: 2.0
+      hourly_rate: 150
+      value: 7500.00
+
+  risk_avoidance:
+    name: "Risk Avoidance"
+    description: "Value of security findings caught before production"
+    metric: "security_findings_count"
+    formula: "critical_findings * estimated_breach_cost * probability"
+    baseline_required:
+      estimated_breach_cost: "Estimated cost of a security breach"
+      probability: "Probability of exploitation if finding was missed"
+    example:
+      critical_findings: 3
+      estimated_breach_cost: 50000
+      probability: 0.05
+      value: 7500.00
+
+  knowledge_preservation:
+    name: "Knowledge Preservation"
+    description: "Value of codified procedures and institutional knowledge"
+    metric: "procedures_stored_count"
+    formula: "procedures_stored * estimated_recreation_cost"
+    baseline_required:
+      estimated_recreation_cost: "Cost to recreate knowledge from scratch"
+    example:
+      procedures_stored: 15
+      recreation_cost: 500
+      value: 7500.00
+
+# Project baseline template
+project_baseline_template:
+  project_name: ""
+  created_at: ""
+  baselines:
+    time:
+      hourly_rate: 150
+      task_baselines:
+        TRIVIAL: { manual_hours: 0.5 }
+        MINOR: { manual_hours: 2.0 }
+        STANDARD: { manual_hours: 8.0 }
+        MAJOR: { manual_hours: 40.0 }
+    quality:
+      baseline_error_rate: 0.25
+      cost_per_error: 200
+    risk:
+      estimated_breach_cost: 50000
+      exploit_probability: 0.05
+    knowledge:
+      recreation_cost_per_procedure: 500
+
+# Reporting
+reporting:
+  weekly_digest:
+    metrics: ["completion_rate", "avg_ttr", "first_pass_rate", "cost_per_outcome"]
+    format: "markdown"
+    destination: "obsidian_daily_note"
+    # fallback_destination: console (if Obsidian MCP unavailable)
+  project_retrospective:
+    metrics: "all"
+    include_value_attribution: true
+    format: "markdown"
+    destination: "project_docs"
+  presentation_data:
+    metrics: "aggregated"
+    anonymize: true
+    format: "yaml"

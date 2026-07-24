@@ -1,0 +1,117 @@
+# Infrastructure Domain — Process Knowledge
+# SOPs and rules for deployment, Docker, nginx, and system operations
+
+domain: infrastructure
+description: "Infrastructure operations knowledge — Docker, nginx, deployment, monitoring"
+
+rules:
+  - id: "INFRA-DOCKER-001"
+    domain: "infrastructure.docker"
+    name: "Container memory limit requirement"
+    condition: "deploy_to_production == true AND memory_limit == null"
+    action: "set_memory_limit AND log_warning"
+    source: "Docker deployment standards"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["docker", "memory", "limits"]
+    priority: 2
+
+  - id: "INFRA-DOCKER-002"
+    domain: "infrastructure.docker"
+    name: "Docker Compose health check"
+    condition: "service_type == 'web' AND healthcheck == null"
+    action: "add_healthcheck_to_compose AND configure_restart_policy"
+    source: "Docker deployment standards"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["docker", "healthcheck", "compose"]
+    priority: 2
+
+  - id: "INFRA-NGINX-001"
+    domain: "infrastructure.nginx"
+    name: "SSL certificate renewal check"
+    condition: "cert_expiry_days <= 30"
+    action: "trigger_certbot_renewal AND verify_renewal"
+    source: "SSL management SOP"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["ssl", "certbot", "renewal"]
+    priority: 1
+
+sops:
+  - id: "INFRA-DEPLOY-SOP-001"
+    domain: "infrastructure.deployment"
+    name: "Deploy to h2 (${H2_HOST})"
+    source: "Operational experience"
+    last_verified: "2026-04-15"
+    status: active
+    steps:
+      - action: "Check CSF allow list for source IP"
+        verification: "ssh h2 'csf -g ${SOURCE_IP}'"
+        critical: true
+      - action: "Verify Docker container binds to 127.0.0.1"
+        verification: "grep '127.0.0.1' docker-compose.yml"
+        critical: true
+      - action: "Deploy via docker compose"
+        verification: "docker compose up -d && docker compose ps"
+      - action: "Test through nginx reverse proxy"
+        verification: "curl -s https://${DOMAIN}/health"
+        critical: true
+      - action: "Verify Wazuh agent reports the new service"
+        verification: "Check Wazuh dashboard for new service events"
+
+  - id: "INFRA-DEPLOY-SOP-002"
+    domain: "infrastructure.deployment"
+    name: "Deploy to hi (${HI_HOST})"
+    source: "Operational experience"
+    last_verified: "2026-04-15"
+    status: active
+    steps:
+      - action: "Check CSF allow list for source IP"
+        verification: "ssh hi 'csf -g ${SOURCE_IP}'"
+        critical: true
+      - action: "Verify Docker container binds to 127.0.0.1"
+        verification: "grep '127.0.0.1' docker-compose.yml"
+        critical: true
+      - action: "Deploy via docker compose"
+        verification: "docker compose up -d && docker compose ps"
+      - action: "Test through nginx reverse proxy"
+        verification: "curl -s https://${DOMAIN}/health"
+        critical: true
+      - action: "Verify Wazuh agent reports the new service"
+        verification: "Check Wazuh dashboard"
+
+  - id: "INFRA-BACKUP-SOP-001"
+    domain: "infrastructure.backup"
+    name: "Qdrant backup procedure"
+    source: "Operational experience"
+    last_verified: "2026-04-10"
+    status: active
+    steps:
+      - action: "Create Qdrant snapshot via API"
+        verification: "curl -X POST localhost:6333/snapshots"
+        # Add -H 'api-key: ${QDRANT_API_KEY}' if API key auth is enabled
+      - action: "Copy snapshot to backup location"
+        verification: "ls -la /backups/qdrant/"
+      - action: "Verify snapshot integrity"
+        verification: "Test restore to temp collection"
+      - action: "Clean old snapshots (>7 days)"
+        verification: "ls /backups/qdrant/ | wc -l"
+
+decision_trees: []
+
+edge_cases:
+  - id: "INFRA-DOCKER-EC-001"
+    domain: "infrastructure.docker"
+    name: "Docker compose v2 named volumes on remote"
+    scenario: "Deploying with named volumes on a remote VPS that already has data"
+    standard_behavior: "docker compose up creates volumes if not present"
+    exception: "If volume exists with data from previous version, compose will NOT recreate it. Old data persists. Use 'docker compose down -v' to remove volumes, but this DESTROYS existing data."
+    source: "Operational experience — lost data on hi once by not backing up before volume removal"
+    status: active

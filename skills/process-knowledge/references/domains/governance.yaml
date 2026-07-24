@@ -1,0 +1,62 @@
+# Governance Domain — Process Knowledge
+# Audit, compliance, data classification, and privacy rules
+
+domain: governance
+description: "Governance and compliance knowledge — audit trails, data classification, privacy enforcement"
+
+rules:
+  - id: "GOV-AUDIT-001"
+    domain: "governance.audit"
+    name: "Audit trail completeness"
+    condition: "agent_action_without_audit_entry == true"
+    action: "flag_audit_gap AND create_retroactive_entry"
+    source: "Governance framework PRD 5"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["audit", "completeness", "compliance"]
+    priority: 1
+
+  - id: "GOV-CLASS-001"
+    domain: "governance.data_classification"
+    name: "Third-party data processing gate"
+    condition: "data_source == 'third_party'"
+    action: "hard_stop AND require_data_classification_gate"
+    source: "CLAUDE.md — Data Classification Gate"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["data", "classification", "third_party"]
+    priority: 1
+
+  - id: "GOV-PRIV-001"
+    domain: "governance.privacy"
+    name: "PII handling in agent context"
+    condition: "context_contains_pii == true AND pii_handling_policy == null"
+    action: "apply_minimum_necessary_principle AND mask_pii_in_logs"
+    source: "Privacy by design principles"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["pii", "privacy", "masking"]
+    priority: 1
+
+  - id: "GOV-GATE-001"
+    domain: "governance.compliance"
+    name: "External communication approval gate"
+    condition: "output_type == 'external_communication'"
+    action: "require_operator_approval AND compute_sha256_hash AND log_approval_event"
+    source: "CLAUDE.md — External Communication Gate"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["approval", "external", "communication"]
+    priority: 1
+
+sops: []
+decision_trees: []
+edge_cases: []

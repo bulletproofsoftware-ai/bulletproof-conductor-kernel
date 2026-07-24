@@ -1,0 +1,8 @@
+{
+  "name": "conductor-kernel",
+  "description": "Domain-agnostic orchestration kernel for multi-agent workflows. Exports 19 agents, 14 skills, workflow-mode and stream-mode primitives, audit-emission, memory recall/store, and recovery classification. No slash command — domain plugins (conductor-dev, clue-soc) export commands that consume this kernel.",
+  "version": "0.1.0",
+  "author": { "name": "bulletproofsoftware-ai" },
+  "homepage": "https://github.com/bulletproofsoftware-ai/conductor-kernel",
+  "license": "MIT"
+}

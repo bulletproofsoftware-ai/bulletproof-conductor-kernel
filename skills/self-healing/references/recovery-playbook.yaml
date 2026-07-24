@@ -1,0 +1,169 @@
+# Recovery Playbook — Strategy definitions for automated failure recovery
+# Used by conductor-recovery-engine agent
+# Strategies are evaluated in order; first matching strategy wins
+
+version: "1.0"
+# SYSTEM BOUNDARY NOTE:
+# This playbook governs the conductor-recovery-engine agent's strategy selection.
+# For conductor-level step retries, see skills/retry-policy/references/retry-policy.yaml.
+# The recovery engine is invoked AFTER retry-policy exhausts its attempts.
+description: "YAML-configurable recovery strategies per failure category and workflow context"
+
+strategies:
+  retry:
+    description: "Retry with exponential backoff and jitter"
+    max_attempts: 2
+    backoff:
+      type: exponential
+      initial_ms: 2000
+      multiplier: 2.0
+      max_ms: 16000
+      jitter: true
+      jitter_range_ms: 500
+    conditions:
+      - category: transient
+      - category: external
+      - category: infrastructure
+        after_health_check: true
+    success_criteria:
+      - agent_returns_without_error
+      - output_passes_validation
+    on_exhaustion: escalate
+
+  fallback_agent:
+    description: "Substitute a capable fallback agent when primary fails"
+    mapping:
+      conductor-architect: conductor-builder
+      conductor-research: conductor-advisor
+      conductor-frontend-designer: conductor-builder
+      conductor-pentest-coordinator: conductor-ciso
+      conductor-database: conductor-builder
+      conductor-api-design: conductor-architect
+      conductor-performance: conductor-qa
+      conductor-observability: conductor-devops
+      conductor-recovery-engine: conductor-builder
+      conductor-event-router: conductor-builder
+      conductor-outcome-collector: conductor-builder
+      conductor-prediction-engine: conductor-builder
+      conductor-agent-gateway: conductor-builder
+    conditions:
+      - category: model
+        after_retry_exhausted: true
+      - category: infrastructure
+        after_retry_exhausted: true
+        agent_specific: true
+    prompt_adaptation: |
+      NOTE: You are acting as a fallback for {original_agent} which is unavailable.
+      The original task was: {original_task}
+      You may not have all specialized capabilities — focus on delivering the core
+      requirements at acceptable quality. Flag anything you cannot confidently handle.
+    on_exhaustion: escalate
+
+  model_downgrade:
+    description: "Downgrade model tier to handle context overflow or cost pressure"
+    tier_sequence:
+      - opus
+      - sonnet
+      - haiku
+    conditions:
+      - category: model
+        error_type: context_overflow
+      - category: model
+        error_type: token_limit_exceeded
+      - cost_budget_exceeded: true
+    context_reduction:
+      max_input_chars: 50000
+      summarize_history: true
+      drop_non_essential_context: true
+    minimum_tier_by_conductor_tier:
+      MAJOR: sonnet
+      STANDARD: sonnet
+      MINOR: haiku
+      TRIVIAL: haiku
+    on_exhaustion: fallback_agent
+
+  graceful_degrade:
+    description: "Skip non-critical steps or reduce quality expectations"
+    conditions:
+      - category: data
+        conductor_tier: [TRIVIAL, MINOR]
+      - category: external
+        step_criticality: non_critical
+        after_retry_exhausted: true
+    actions:
+      skip_non_critical: true
+      reduce_quality_tier: true
+      log_degradation: true
+    quality_reduction:
+      skip_gemini_validation: false
+      accept_partial_output: true
+      minimum_completion_pct: 50
+    on_exhaustion: escalate
+
+  wait_and_retry:
+    description: "Wait for infrastructure recovery then retry"
+    conditions:
+      - category: infrastructure
+        health_check_failing: true
+    wait:
+      initial_ms: 5000
+      max_ms: 60000
+      check_interval_ms: 5000
+      health_endpoint_required: true
+    health_check_backoff: exponential
+    health_check_max_interval_ms: 30000
+    max_wait_ms: 300000
+    on_timeout: escalate
+
+  escalate:
+    description: "Escalate to operator with full context"
+    conditions:
+      - category: permission
+      - category: logic
+      - all_strategies_exhausted: true
+    actions:
+      notify: operator
+      preserve_state: true
+      create_checkpoint: true
+    notification:
+      include_failure_context: true
+      include_recovery_history: true
+      include_suggested_actions: true
+      suggested_actions:
+        - "Retry manually after fixing the root cause"
+        - "Skip this step and continue workflow"
+        - "Abort workflow and start fresh"
+        - "Override with manual input"
+
+# Strategy selection priority (evaluated top to bottom)
+strategy_priority:
+  - escalate         # Permission/logic always escalate immediately
+  - wait_and_retry   # Infrastructure issues get patience first
+  - retry            # Transient/external get standard retry
+  - model_downgrade  # Model issues try cheaper/smaller first
+  - fallback_agent   # If retry exhausted, try different agent
+  - graceful_degrade # Last resort before escalation
+
+# Per-tier overrides
+tier_overrides:
+  TRIVIAL:
+    max_retry_attempts: 1
+    allow_graceful_degrade: true
+    skip_health_check: false  # All tiers run health checks — the overhead is minimal compared to retry waste
+    escalation_threshold: low
+  MINOR:
+    max_retry_attempts: 2
+    allow_graceful_degrade: true
+    skip_health_check: false
+    escalation_threshold: medium
+  STANDARD:
+    max_retry_attempts: 2
+    allow_graceful_degrade: false
+    skip_health_check: false
+    escalation_threshold: high
+  MAJOR:
+    max_retry_attempts: 2
+    allow_graceful_degrade: false
+    skip_health_check: false
+    escalation_threshold: critical
+    require_checkpoint_before_recovery: true

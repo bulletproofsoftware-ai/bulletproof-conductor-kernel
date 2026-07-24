@@ -1,0 +1,849 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.conductor-kernel.example/workflow-state.schema.json",
+  "title": "Conductor Kernel Workflow State",
+  "description": "Base schema for workflow-mode kernel state files. Domain plugins extend via domain_extensions. Backward compatible with conductor-plugin/schemas/conductor-state.schema.json v2.0.0 — all v2 files validate against v3 because the new fields (domain, domain_extensions, schema_version=3.0) are optional with sensible defaults.",
+  "type": "object",
+  "required": [],
+  "$comment_required": "Required list intentionally empty per reconciliation 2026-05-19. Prior list (project_name, current_phase, current_step, task_queue, completed_tasks, verification_status) was aspirational — survey of 29 live state files showed 14/29 missing one or more of these fields at any given time, including completed workflows (no task_queue), early-phase workflows (no current_step), and recovery-session files (no project_name). Schema documents structure of declared fields when present; it does not enforce phase-dependent presence.",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version. Kernel v0.1.0 publishes this schema at 3.0. Absence defaults to 2.0 (legacy conductor-plugin file) and the reader injects domain='dev' and domain_extensions={} at load time. Versions '1.0'/'1.0.0' are accepted as the in-flight live conductor-state.json variant and load without modification per REQ-CDV-002.",
+      "default": "3.0",
+      "enum": ["1.0", "1.0.0", "2.0", "2.0.0", "3.0", "3.0.0"]
+    },
+    "domain": {
+      "type": "string",
+      "description": "Domain plugin identifier. Used to select tier-matrix weights, state-schema extensions, tools-allowlist. Absence defaults to 'dev' for backward compatibility with conductor-plugin state files.",
+      "default": "dev"
+    },
+    "project_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the project being orchestrated"
+    },
+    "project_description": {
+      "type": "string",
+      "description": "Free-text description of the project. Used by tier classifier and BRD extractor."
+    },
+    "brd_source": {
+      "type": ["string", "null"],
+      "description": "Path or URI to the source BRD/PRD document if one exists."
+    },
+    "initiated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when orchestration started. Optional in v3; required in v2 — readers tolerate absence."
+    },
+    "session_started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Alternate field name used by some legacy files. Treated as synonym for initiated_at."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of last state write."
+    },
+    "working_directory": {
+      "type": "string",
+      "description": "Absolute path to the working directory where state file lives."
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["TRIVIAL", "MINOR", "STANDARD", "MAJOR", "CRITICAL"],
+      "description": "Tier classification result. CRITICAL added in v3 to support CLUE alert classification."
+    },
+    "tier_classification": {
+      "type": "object",
+      "description": "Full tier classification record per REQ-KER-006. signals + weights are domain-supplied; only the structure is enforced here.",
+      "properties": {
+        "score": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 4.0
+        },
+        "signals": {
+          "type": "object",
+          "description": "Domain-specific 5-signal scores. Dev domain uses {scope,type,risk,ambiguity,intent_sensitivity}; SOC domain uses {impact,scope,confidence,data_classification,reversibility}.",
+          "additionalProperties": { "type": "number", "minimum": 1, "maximum": 4 }
+        },
+        "weights": {
+          "type": "object",
+          "description": "Per-signal weights summing to 1.0. Loaded from the domain's tier-matrix.yaml.",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Human-readable explanation of why this score was assigned."
+        },
+        "classified_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Legacy v1.0 field — when classification was performed. REQ-CDV-002."
+        },
+        "rescoped_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the most recent operator-driven tier re-classification."
+        },
+        "rescope_reason": {
+          "type": "string",
+          "description": "Human-readable explanation of the rescope, captured at rescope time."
+        }
+      },
+      "additionalProperties": true
+    },
+    "tier_override": {
+      "type": ["boolean", "string", "null"],
+      "default": false,
+      "description": "Operator override indicator. Canonically boolean, but legacy state files store override rationale here as a string (e.g., 'MAJOR (user-specified)', 'operator_requested'). Accept both forms."
+    },
+    "gate_mode": {
+      "type": "string",
+      "enum": ["advisory", "blocking", "mixed", "skip"],
+      "description": "Default gate mode for critic checkpoints; per-tier matrix."
+    },
+    "current_phase": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Canonical phase record. Reconciliation 2026-05-19: dropped required [number,name] and additional-property restrictions — many in-flight files write partial records.",
+          "properties": {
+            "number": {
+              "type": ["integer", "string"],
+              "description": "Phase number (integer or string like '0.5', '2.5')."
+            },
+            "name": { "type": "string" },
+            "started_at": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "string",
+          "description": "Shorthand phase identifier (e.g., 'phase_4_verification', 'phase1_complete') used by some legacy state files."
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Bare phase index used by some legacy state files."
+        }
+      ]
+    },
+    "current_step": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Free-text description of the current step. Legacy form used by conductor-plugin state files."
+        },
+        {
+          "type": "object",
+          "description": "Reconciliation 2026-05-19: relaxed from required [number,name,status] — many in-flight state files write partial step records (e.g., only {name, status}). Status enum extended to include workflow-specific terminal markers like 'closing-arc-complete'.",
+          "properties": {
+            "number": { "type": "integer", "minimum": 0 },
+            "name": { "type": "string" },
+            "assigned_agent": { "type": "string" },
+            "started_at": { "type": "string", "format": "date-time" },
+            "status": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "task_queue": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["step", "name", "agent", "status"],
+            "properties": {
+              "step": { "type": "integer", "minimum": 0 },
+              "name": { "type": "string" },
+              "agent": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["pending", "in_progress", "completed", "blocked", "failed", "partial", "skipped", "completed_unvalidated"]
+              },
+              "depends_on": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "uniqueItems": true
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Legacy v1.0 task shape: {id, description, agent, status}. REQ-CDV-002.",
+            "required": ["id", "description", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "agent": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "completed_tasks": {
+      "type": "array",
+      "description": "Completed task history. Item shape is intentionally permissive — agents (including kernel agents like analyze-codebase) write varied records. Items may be plain string descriptions/IDs (e.g., 'README + Obsidian documentation', 'phase-4-prep-oi-26-zero-failure-baseline-restored'), v1 {step,name,agent,completed_at,outcome,deliverables,duration_minutes}, brownfield analysis {id,description,agent,deliverable,files_read,completed_at,surprises}, or other shapes. Validation is structural only; consumers must tolerate shape variation.",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "object" }
+        ]
+      }
+    },
+    "blocked_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": { "type": "integer" },
+          "name": { "type": "string" },
+          "blocked_reason": { "type": "string" },
+          "blocked_since": { "type": "string", "format": "date-time" },
+          "blocked_by_step": { "type": "integer" }
+        }
+      }
+    },
+    "failed_tasks": {
+      "type": "array",
+      "description": "Dead letter queue. Reference v2 conductor-state schema for full structure.",
+      "items": { "type": "object" }
+    },
+    "agents_invoked": {
+      "type": "array",
+      "description": "Agents invoked in this workflow. Items may be qualified <plugin>:<agent> strings or rich invocation records ({agent, task_id, dispatched_at, completed_at, verdict, deliverables_summary, ...}). Consumers must tolerate both forms.",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "object" }
+        ]
+      }
+    },
+    "verification_status": {
+      "type": "object",
+      "description": "Verification gate states. Property names are gate identifiers (e.g., post_architect, post_ciso, post_qa, post_implementation, post_pentest, post_supply_chain, pre_release, completeness_validation). Reconciliation 2026-05-19: enum relaxed to free-form string after survey of 29 state files found long-tail values that did not fit the original enum (e.g., 'skip', 'not_applicable', 'pass-353-tests-mypy-clean', plus ISO-date values used by completeness_validation_date sibling keys). Canonical values remain pass/fail/pending/advisory_pass_with_findings/skipped/aligned/drift/ambiguous/in_progress/completed/approved/approved_with_conditions/needs_rework/block/pass_with_notes; consumers should treat unrecognized strings as advisory.",
+      "additionalProperties": {
+        "anyOf": [
+          { "type": ["string", "null"] },
+          { "type": "object" },
+          { "type": "array" },
+          { "type": "boolean" },
+          { "type": "integer" },
+          { "type": "number" }
+        ]
+      }
+    },
+    "gemini_validations": {
+      "type": "array",
+      "description": "Gemini validation results per REQ-KER-016. See v2 schema for full per-entry structure. Hermes E3 (REQ-CDV-HERMES-012) adds an optional flat `dispatch_mode` field to each item documenting whether the dispatch used the Task tool or mcp__MCP_DOCKER__code-mode.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "dispatch_mode": {
+            "type": "string",
+            "enum": ["task", "code-mode"],
+            "default": "task",
+            "description": "Hermes E3 (REQ-CDV-HERMES-012): dispatch transport for this agent invocation. Flat sibling — NOT nested under .entry. The kernel schema is permissive (open items), so this documentation is non-breaking for consumers that omit the field."
+          }
+        }
+      }
+    },
+    "gemini_validation_stats": {
+      "type": "object",
+      "description": "Aggregate stats for Gemini validations."
+    },
+    "change_log": {
+      "type": "object",
+      "description": "Hermes E6 — per-tool-call attribution log metadata (REQ-CDV-HERMES-001/002)",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Project-relative path to active log (default: .conductor/change-log.jsonl)"
+        },
+        "entries_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total entries appended to active log this workflow"
+        },
+        "last_entry_ts": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "archive_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of .jsonl.gz files in .conductor/change-log-archive/"
+        },
+        "rotation_threshold_bytes": {
+          "type": "integer",
+          "default": 104857600,
+          "description": "100MB by default"
+        }
+      }
+    },
+    "code_mode_latency": {
+      "type": "array",
+      "description": "Hermes E3 (REQ-CDV-HERMES-015): paired latency measurements between task-mode baseline and code-mode actual runs for the same fan-out template. Top-level sibling to gemini_validations, change_log. Additive — backward compatible. After >=10 paired runs, mean(ratio) must be >=0.30 or feature_flags.code_mode_enabled stays false. Moved from properties.metrics.properties.code_mode_latency to top-level per Gemini E3 validation 2026-05-20.",
+      "items": {
+        "type": "object",
+        "required": ["fanout_template", "task_mode_baseline_ms", "code_mode_actual_ms", "measured_at"],
+        "properties": {
+          "fanout_template": {
+            "type": "string",
+            "description": "Identifier of the fan-out template (e.g., 'evidence-collector-fanout')."
+          },
+          "task_mode_baseline_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Latency of the same fan-out via task mode."
+          },
+          "code_mode_actual_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Latency of the same fan-out via code-mode."
+          },
+          "measured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ratio": {
+            "type": "number",
+            "description": "Derived: 1 - (code_mode_actual_ms / task_mode_baseline_ms). Positive = code-mode faster."
+          }
+        }
+      }
+    },
+    "spec_alignment": {
+      "type": ["object", "null"],
+      "description": "Spec alignment check result. Null until run."
+    },
+    "builder_readback": {
+      "type": ["object", "null"],
+      "description": "Builder readback verification result. Null until builder reads back."
+    },
+    "remediation_loops": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "array", "items": { "type": "object" } }
+      ],
+      "default": 0,
+      "description": "Loop counter (integer) in canonical form. Some legacy files store a log array of remediation loop records instead; both accepted."
+    },
+    "total_critic_rejections": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "critic_rejections": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "array", "items": { "type": "object" } }
+      ],
+      "default": 0,
+      "description": "Alias for total_critic_rejections used in some legacy state files. Counter (integer) in canonical form; some files store a log array of rejection records."
+    },
+    "hardening": {
+      "type": ["object", "null"],
+      "description": "Code Hardener scan-fix-rescan state."
+    },
+    "adversarial_review": {
+      "type": ["object", "null"],
+      "description": "Dual-AI adversarial review state."
+    },
+    "checkpoints": {
+      "type": "array",
+      "description": "Checkpoint history from conductor-kernel:checkpoint agent.",
+      "items": { "type": "object" }
+    },
+    "handoff_history": {
+      "type": "array",
+      "description": "Complete history of agent-to-agent handoffs.",
+      "items": { "type": "object" }
+    },
+    "recovery": {
+      "type": "object",
+      "description": "Recovery state from kernel.recovery_classify per REQ-KER-020."
+    },
+    "event_routing": {
+      "type": "object",
+      "description": "Event-driven automation state."
+    },
+    "outcome_metrics": {
+      "type": "object",
+      "description": "Outcome measurement state."
+    },
+    "predictive_scaling": {
+      "type": "object",
+      "description": "Predictive scaling state."
+    },
+    "agent_instances": {
+      "type": "array",
+      "description": "Non-Human Identity registry per governance-plugin manifest.",
+      "items": { "type": "object" }
+    },
+    "agent_gateway": {
+      "type": "object",
+      "description": "A2A external agent interop state."
+    },
+    "circuit_breaker": {
+      "type": "object",
+      "description": "Circuit breaker state for external integrations."
+    },
+    "governance": {
+      "type": "object",
+      "description": "Governance framework state. Required fields enforced by governance-plugin, not by kernel."
+    },
+    "agent_card_validations": {
+      "type": "array",
+      "description": "Audit log of agent card validation outcomes.",
+      "items": { "type": "object" }
+    },
+    "audit_sink": {
+      "type": "object",
+      "description": "External audit trail configuration. Domain plugins may add transports."
+    },
+    "secrets_policy": {
+      "type": "object",
+      "description": "Credential management policy."
+    },
+    "cost_tracking": {
+      "type": "object",
+      "description": "Token and cost tracking for denial-of-wallet protection."
+    },
+    "token_budget": {
+      "type": "object",
+      "description": "Token budget tracking by phase and by model. Alternate naming used by clue2 state files; treated as synonym of cost_tracking for read purposes.",
+      "properties": {
+        "total_input_tokens": { "type": "integer", "minimum": 0 },
+        "total_output_tokens": { "type": "integer", "minimum": 0 },
+        "total_cost_usd": { "type": "number", "minimum": 0 },
+        "dispatches": { "type": "array", "items": { "type": "object" } },
+        "by_phase": { "type": "object" },
+        "by_model": { "type": "object" }
+      }
+    },
+    "intent": {
+      "type": "object",
+      "description": "Intent engineering layer per PRD 8."
+    },
+    "cyclic_execution": {
+      "type": "object",
+      "description": "Cyclic verification pattern tracking."
+    },
+    "project_characteristics": {
+      "type": "object",
+      "description": "Detected project characteristics for capability enforcement."
+    },
+    "tier_reclassified": {
+      "type": "boolean",
+      "default": false
+    },
+    "tier_reclassification_history": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "ku_ki_extraction": {
+      "type": "object",
+      "description": "KU/KI keyword extraction state from retrospective."
+    },
+    "project_signature": {
+      "type": "object",
+      "description": "Per-project behavioral signature accumulated across workflows."
+    },
+    "sbr_state": {
+      "type": "object",
+      "description": "Subclass Brain Registry ingestion state."
+    },
+    "code_directories": {
+      "type": "object",
+      "description": "Map of logical name to absolute path for repos referenced by this workflow."
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "Map of logical name to URL/host for infrastructure dependencies."
+    },
+    "phases_planned": {
+      "type": "object",
+      "description": "Map of phase number/name to summary."
+    },
+    "phasing": {
+      "type": "object",
+      "description": "Workflow phasing plan per conductor-dev hermes-inspired enhancements. Maps phase identifiers (P1, P2, ...) to phase records with name, enhancements list, status, optional blocked_by, and order.",
+      "properties": {
+        "scope": { "type": "string" }
+      },
+      "patternProperties": {
+        "^P[0-9]+$": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "enhancements": { "type": "array", "items": { "type": "string" } },
+            "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "blocked", "skipped"] },
+            "blocked_by": { "type": "array", "items": { "type": "string" } },
+            "order": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "feature_flags": {
+      "type": "object",
+      "description": "Per-project boolean feature flags. Open-ended map; specific flag semantics owned by the consuming agent or workflow (e.g., code_mode_enabled).",
+      "additionalProperties": { "type": "boolean" }
+    },
+    "open_decisions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Load-bearing constraints. Free-form to allow domain-specific structure."
+    },
+    "constraints_load_bearing": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Flat-list form of load-bearing constraints used by clue2 state."
+    },
+    "verification_status_phase_0": {
+      "type": "object",
+      "description": "Phase-0 specific verification record."
+    },
+    "verification_status_phase_1": {
+      "type": "object",
+      "description": "Phase-1 specific verification record."
+    },
+    "verification_status_phase_2": {
+      "type": "object",
+      "description": "Phase-2 specific verification record."
+    },
+    "verification_status_phase_3": {
+      "type": "object",
+      "description": "Phase-3 specific verification record."
+    },
+    "verification_status_phase_4": {
+      "type": "object",
+      "description": "Phase-4 specific verification record."
+    },
+    "verification_status_phase_5": {
+      "type": "object",
+      "description": "Phase-5 specific verification record."
+    },
+    "verification_status_phase_6": {
+      "type": "object",
+      "description": "Phase-6 specific verification record."
+    },
+    "verification_status_phase_7": {
+      "type": "object",
+      "description": "Phase-7 specific verification record."
+    },
+    "verification_status_phase_8": {
+      "type": "object",
+      "description": "Phase-8 specific verification record."
+    },
+    "phase_1_completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Phase 1 closeout timestamp."
+    },
+    "phase_2_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "phase_3_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "phase_4_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "phase_5_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "phase_6_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "phase_7_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "phase_8_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ready_for_phase_2": {
+      "type": "boolean"
+    },
+    "ready_for_phase_3": {
+      "type": "boolean"
+    },
+    "ready_for_phase_4": {
+      "type": "boolean"
+    },
+    "ready_for_phase_5": {
+      "type": "boolean"
+    },
+    "ready_for_phase_6": {
+      "type": "boolean"
+    },
+    "ready_for_phase_7": {
+      "type": "boolean"
+    },
+    "ready_for_phase_8": {
+      "type": "boolean"
+    },
+    "session_summary": {
+      "type": "string"
+    },
+    "is_brownfield": {
+      "type": "boolean",
+      "description": "Legacy v1.0 field — indicates project is a brownfield analysis target. Preserved for REQ-CDV-002 backward-compat with conductor-plugin state files."
+    },
+    "open_questions_resolved": {
+      "type": ["array", "object", "null"],
+      "description": "Legacy v1.0 field — resolved open questions. Some files use array of records, others use object map keyed by question_id. REQ-CDV-002."
+    },
+    "phase_1_complete": {
+      "type": "boolean",
+      "description": "Legacy v1.0 field — phase 1 completion flag. REQ-CDV-002."
+    },
+    "phase_1_deliverable": {
+      "type": ["string", "object", "null"],
+      "description": "Legacy v1.0 field — phase 1 deliverable summary. REQ-CDV-002."
+    },
+    "phase_2_started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Legacy v1.0 field — phase 2 start timestamp. REQ-CDV-002."
+    },
+    "phase_history": {
+      "type": "array",
+      "description": "Legacy v1.0 field — full phase progression history. REQ-CDV-002.",
+      "items": { "type": "object" }
+    },
+    "project_root": {
+      "type": "string",
+      "description": "Legacy v1.0 field — absolute path to project root. Treated as synonym of working_directory. REQ-CDV-002."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Legacy v1.0 field — workflow start timestamp. Treated as synonym of initiated_at. REQ-CDV-002."
+    },
+    "user_directive": {
+      "type": ["string", "object", "null"],
+      "description": "Legacy v1.0 field — captured user directive at workflow start. REQ-CDV-002."
+    },
+    "domain_extensions": {
+      "type": "object",
+      "description": "Extension point per REQ-KER-003. Domain plugins write arbitrary structure here. Kernel never reads or writes these fields. Example for SOC: {investigation_id, alert_ids, evidence_chain, mitre_techniques, disposition, confidence, verdict_narrative, containment_actions, after_action_observations}. Reconciliation 2026-05-19 relaxed root additionalProperties to true, so this is no longer the sole extension point — but it remains the recommended location for domain-plugin extensions.",
+      "default": {}
+    },
+    "updated_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Reconciliation Camp A: most-recent write timestamp. Common across conductor-dev/plugin-cache state files."
+    },
+    "created_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Reconciliation Camp A: workflow creation timestamp. Treat as alias of initiated_at where present."
+    },
+    "tier_score": {
+      "type": ["number", "null"],
+      "minimum": 1.0,
+      "maximum": 4.0,
+      "description": "Reconciliation Camp A: flattened tier score (1.0-4.0). Some state files store this alongside or instead of tier_classification.score."
+    },
+    "tier_signals": {
+      "type": ["object", "null"],
+      "description": "Reconciliation Camp A: flattened tier signal scores. Mirrors tier_classification.signals shape but accepts either bare numbers (1-4) or rich signal records {value, weight, rationale}.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "number", "minimum": 1, "maximum": 4 },
+          { "type": "object" }
+        ]
+      }
+    },
+    "tier_rationale": {
+      "type": ["string", "null"],
+      "description": "Reconciliation Camp A: flattened human-readable rationale for the tier score. Mirrors tier_classification.rationale."
+    },
+    "workflow_type": {
+      "type": ["string", "null"],
+      "enum": ["new", "existing", "brd-provided", "ui-heavy", "brownfield", null],
+      "description": "Reconciliation Camp A: high-level workflow kind. Observed values: new, existing, brd-provided, ui-heavy."
+    },
+    "workflow_status": {
+      "type": ["string", "null"],
+      "enum": ["pending", "in_progress", "completed", "released", "blocked", "failed", null],
+      "description": "Reconciliation Camp A: rollup workflow status."
+    },
+    "workflow_complete": {
+      "type": "boolean",
+      "default": false,
+      "description": "Reconciliation Camp A: terminal workflow-complete flag set by PPT2Vid-style state files."
+    },
+    "workflow_complete_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Reconciliation Camp A: timestamp of workflow_complete=true transition."
+    },
+    "workflow_completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Reconciliation Camp A: synonym of workflow_complete_at observed in some files."
+    },
+    "phases": {
+      "type": ["array", "object"],
+      "description": "Reconciliation Camp A: per-phase records. Some files store array of phase records; others store an object map (numeric or symbolic keys like 'phase_0_analysis', 'PHASE_1_DATABASE', '0', '1'). Both forms accepted.",
+      "items": { "type": "object" }
+    },
+    "phases_completed": {
+      "type": "array",
+      "description": "Reconciliation Camp A: array of completed phase identifiers (string names or numbers).",
+      "items": { "type": ["string", "integer"] }
+    },
+    "completed_phases": {
+      "type": "array",
+      "description": "Reconciliation Camp A: synonym of phases_completed used in some files. Items intentionally permissive.",
+      "items": { "oneOf": [{ "type": "string" }, { "type": "integer" }, { "type": "object" }] }
+    },
+    "previous_phases": {
+      "type": "array",
+      "description": "Reconciliation Camp A: prior-phase records carried forward across recovery sessions.",
+      "items": { "type": "object" }
+    },
+    "adversarialReview": {
+      "type": ["object", "null"],
+      "description": "Reconciliation Camp A: camelCase variant of adversarial_review present in legacy state files."
+    },
+    "prd_source": {
+      "type": ["string", "null"],
+      "description": "Reconciliation Camp A: path or identifier of the PRD/spec the workflow was bootstrapped from."
+    },
+    "prd_path": {
+      "type": ["string", "null"],
+      "description": "Reconciliation Camp A: filesystem path of the PRD document."
+    },
+    "spec_path": {
+      "type": ["string", "null"],
+      "description": "Reconciliation Camp A: filesystem path of the architecture/spec document."
+    },
+    "verification_gates": {
+      "type": "object",
+      "description": "Reconciliation Camp A: per-gate verification record (e.g., phase_0_brownfield, phase_1_brd_critic, phase_2_architect_gemini). Distinct from verification_status which is the rollup map."
+    },
+    "status": {
+      "type": ["string", "null"],
+      "enum": ["pending", "in_progress", "completed", "released", "blocked", "failed", null],
+      "description": "Reconciliation Camp A: rollup status. Synonym of workflow_status in many files; both accepted."
+    },
+    "decisions": {
+      "type": ["object", "array"],
+      "description": "Reconciliation Camp A: open/resolved decisions captured during the workflow. Either object map of decision-id → record, or array of decision objects."
+    },
+    "gates": {
+      "type": "object",
+      "description": "Reconciliation Camp A: per-critic gate state (architecture_critic, brd_critic, implementation_critic, pre_release_critic, spec_critic, post_pentest_critic, etc.)."
+    },
+    "kernel_version": {
+      "type": ["string", "null"],
+      "description": "Reconciliation Camp A: kernel version that wrote this state file."
+    },
+    "state_signature": {
+      "type": ["string", "null"],
+      "description": "Optional HMAC over the state file contents using a kernel-managed key, computed by kernel.workflow.state_advance per RC for F-08. Readers SHOULD verify the signature where present; absent or invalid signature on a state file claimed to be state_advance-managed = corrupted, abort workflow."
+    },
+    "skill_promotion": {
+      "type": "object",
+      "description": "Hermes E1 — skill promotion candidates and history (REQ-CDV-HERMES-009/010/011). OPTIONAL block. Recorded by the retrospective agent's Section 4 mining and updated by skill-promote.sh / skill-promote-patch.sh on operator action.",
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "description": "Trajectory-pattern promotion candidates surfaced for operator review.",
+          "items": {
+            "type": "object",
+            "required": ["trajectory_ids", "proposed_skill_path", "drafted_at", "status"],
+            "properties": {
+              "trajectory_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 3,
+                "description": "Qdrant trajectory IDs that contributed to this candidate (>=3 per the §3.6 hard limit)."
+              },
+              "proposed_skill_path": {
+                "type": "string",
+                "description": "Filesystem path of the drafted SKILL.md under ~/.claude/skills/_proposed/<slug>/"
+              },
+              "success_count": {
+                "type": "integer",
+                "minimum": 3,
+                "description": "Number of outcome.success trajectories matching the pattern in the 90-day window."
+              },
+              "trajectory_pattern_hash": {
+                "type": ["string", "null"],
+                "description": "SHA-256 of the pipe-joined execution_trace[].tool sequence."
+              },
+              "drafted_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["pending", "approved", "rejected"]
+              },
+              "rejection_reason": {"type": ["string", "null"]},
+              "promoted_at": {"type": ["string", "null"], "format": "date-time"}
+            }
+          }
+        },
+        "patches": {
+          "type": "array",
+          "description": "Skill self-improvement patch candidates surfaced from change-log re-edit analysis.",
+          "items": {
+            "type": "object",
+            "required": ["target_skill", "patch_path", "drafted_at", "status"],
+            "properties": {
+              "target_skill": {
+                "type": "string",
+                "description": "Slug of the skill the patch targets (matches ~/.claude/skills/<slug>/)."
+              },
+              "patch_path": {
+                "type": "string",
+                "description": "Filesystem path of the unified diff under ~/.claude/skills/_patches/"
+              },
+              "drafted_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["pending", "applied", "rejected"]
+              },
+              "re_edit_clusters": {
+                "type": "integer",
+                "minimum": 3,
+                "description": "Number of <5min edit clusters detected in the 90-day window."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$comment": "Reconciliation 2026-05-19: root additionalProperties reverted from false (RC-13/F-18) back to true. Survey of 29 live state files showed kernel-owned agents (analyze-codebase, gemini-validator) writing root-level project-specific fields the strict-root rule never accommodated. Camp A high-frequency fields (updated_at, created_at, tier_score, tier_signals, workflow_type, phases, adversarialReview, prd_source, prd_path, verification_gates, phases_completed, status, decisions, gates) are now declared properties with subschemas — those get validated. Other project-specific extras are accepted but unvalidated. The domain_extensions escape hatch remains for forward-compatible additions."
+}

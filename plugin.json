@@ -1,0 +1,63 @@
+{
+  "name": "conductor-kernel",
+  "description": "Domain-agnostic orchestration kernel for multi-agent workflows. Exports 19 agents, 14 skills, workflow-mode and stream-mode primitives, audit-emission, memory recall/store, and recovery classification. No slash command — domain plugins (conductor-dev, clue-soc) export commands that consume this kernel.",
+  "version": "0.1.0",
+  "author": { "name": "bulletproofsoftware-ai" },
+  "homepage": "https://github.com/bulletproofsoftware-ai/conductor-kernel",
+  "license": "MIT",
+  "namespace": "conductor-kernel",
+  "exports": {
+    "agents": "agents",
+    "skills": "skills",
+    "schemas": "schemas",
+    "templates": "templates",
+    "lib": "lib",
+    "scripts": "scripts"
+  },
+  "hooks": "hooks/hooks.json",
+  "stability": {
+    "v0.1.0": {
+      "stable": [
+        "agents:*",
+        "skills:*",
+        "kernel.dispatch_agent",
+        "kernel.dispatch_agent_v2",
+        "kernel.gemini_validate",
+        "kernel.critic_review",
+        "kernel.audit_emit",
+        "kernel.audit_register_redactor",
+        "kernel.audit_unregister_redactor",
+        "kernel.memory_recall",
+        "kernel.memory_store",
+        "kernel.recovery_classify",
+        "kernel.workflow.tier_classify",
+        "kernel.workflow.state_init",
+        "kernel.workflow.state_advance",
+        "kernel.workflow.gates_evaluate",
+        "kernel.workflow.gates_evaluate_and_enforce",
+        "kernel.workflow.complete",
+        "schemas:workflow-state.schema.json",
+        "schemas:stream-state.schema.json",
+        "lib:dispatcher-core.md"
+      ],
+      "reserved": [
+        "kernel.memory_recall_cross_domain",
+        "kernel.audit_verify",
+        "kernel.local_validate"
+      ],
+      "experimental": [
+        "kernel.stream.init",
+        "kernel.stream.handle_event",
+        "kernel.stream.state_get",
+        "kernel.stream.state_mutate",
+        "kernel.stream.pause",
+        "kernel.stream.resume",
+        "kernel.stream.health",
+        "kernel.stream.spawn_workflow"
+      ],
+      "deprecated": [
+        "kernel.workflow.gates_evaluate"
+      ]
+    }
+  }
+}

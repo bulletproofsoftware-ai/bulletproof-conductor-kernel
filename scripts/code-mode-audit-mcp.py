@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""
+code-mode-audit-mcp.py — MCP server exposing `conductor_audit_emit` to code-mode JS sandboxes.
+
+Hermes E3 (REQ-CDV-HERMES-014). This server is the EMITTER end of the audit pipeline
+for events generated inside a `mcp__MCP_DOCKER__code-mode` JavaScript program. The JS
+program calls `conductor_audit_emit({event_type, payload})` at code_mode_start and
+code_mode_complete; this server appends those events to the governance audit.db
+source-of-truth at:
+
+    ~/.claude/plugins/cache/governance/governance/0.1.0/state/audit.db
+
+Architecture (from spec §4):
+
+    Component                                              Role          Direction
+    ----------------------------------------------------- ------------- ---------------
+    audit_emitter.py (canonical state-diff emitter)        WRITER        plugin → SIEM
+    audit.db (sqlite source-of-truth)                      SOURCE        --
+    conductor-audit-sink.py (SIEM exporter)                SINK          sqlite → Wazuh
+    code-mode-audit-mcp.py (THIS FILE)                     EMITTER       JS → sqlite
+
+This server is in the same architectural role as audit_emitter.py: it writes new
+events. It is NOT the SIEM sink.
+
+CISO-002 remediation (2026-05-19 — FAIL-CLOSED):
+    Only two implementation paths are permitted:
+      (a) import the canonical audit_emitter helper and call it directly
+      (b) shell out to a subprocess that calls audit_emitter.py
+    If BOTH (a) and (b) fail, raise McpToolError("audit_emit_unavailable") to the
+    JS caller AND emit a `audit_emit_failure` sentinel to stderr (conductor session
+    log). DO NOT write directly to audit.db with a sqlite client. Direct-write would
+    let a sandbox JS forge audit events without going through the canonical authorization/
+    signing path — that is the bypass risk CISO-002 prohibits.
+
+Operator setup (one-time): register this server in MCP config. See
+`_proposed-code-mode-audit-mcp-config.json` next to this file for the snippet.
+
+Tool surface (exactly one tool):
+    conductor_audit_emit(event_type: str, payload: dict) -> dict
+        Returns {ok: True, event_id: <uuid>, ts: <ISO8601>} on success.
+        Raises McpToolError("audit_emit_unavailable") on dual-fallback failure.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+# ---------- Constants ----------
+
+# Canonical emitter location (Option b subprocess target).
+CANONICAL_EMITTER_PATH = Path(
+    "~/Code/conductor-dev/hooks/scripts/lib/audit_emitter.py"
+)
+
+# Governance source-of-truth (referenced only in error messages — this server
+# MUST NOT open this file directly per CISO-002).
+GOVERNANCE_AUDIT_DB = Path(
+    os.path.expanduser(
+        "~/.claude/plugins/cache/governance/governance/0.1.0/state/audit.db"
+    )
+)
+
+# Identifier recorded as agent_id when conductor_audit_emit is invoked without
+# a more specific agent in the payload.
+DEFAULT_AGENT_ID = "code-mode-runner"
+
+# Subprocess timeout (seconds) — keeps a hung emitter from holding the JS sandbox.
+SUBPROCESS_TIMEOUT_SEC = 5
+
+
+# ---------- MCP server bootstrap ----------
+
+try:
+    from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp.exceptions import ToolError as McpToolError
+except ImportError as exc:  # pragma: no cover - environment guard
+    print(
+        f"[code-mode-audit-mcp] FATAL: mcp package not importable: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+mcp = FastMCP("code-mode-audit")
+
+
+# ---------- Emission paths (CISO-002: exactly two, no more) ----------
+
+
+def _emit_via_import(event_type: str, payload: dict, agent_id: str) -> dict:
+    """Path (a): import the canonical emitter helper and call it directly.
+
+    Raises any exception on failure — caller catches and tries Path (b).
+    """
+    # Import is lazy so the MCP server can still start if the emitter module
+    # is missing; the failure surfaces only when a JS sandbox actually calls
+    # conductor_audit_emit. That keeps cold-start time low and lets fallback
+    # path (b) work even if the importable interface drifts.
+    sys.path.insert(0, str(CANONICAL_EMITTER_PATH.parent))
+    try:
+        import audit_emitter  # type: ignore[import-not-found]
+    finally:
+        # Restore sys.path to avoid leaking the import path to other tools.
+        if str(CANONICAL_EMITTER_PATH.parent) in sys.path:
+            sys.path.remove(str(CANONICAL_EMITTER_PATH.parent))
+
+    # The canonical audit_emitter exposes `emit_event(record, sink_config)` for
+    # SIEM export, NOT a direct sqlite append. The fail-closed contract here is
+    # to surface the absence of a callable named `emit_event_to_audit_db` (the
+    # name we expect the canonical emitter to add when this fallback path lands).
+    # If the canonical emitter does not yet expose it, this path fails and we
+    # try the subprocess fallback.
+    if not hasattr(audit_emitter, "emit_event_to_audit_db"):
+        raise AttributeError(
+            "audit_emitter.emit_event_to_audit_db not exposed — import path "
+            "unavailable; falling back to subprocess."
+        )
+
+    event_id = str(uuid.uuid4())
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    audit_emitter.emit_event_to_audit_db(
+        event_id=event_id,
+        timestamp=ts,
+        event_type=event_type,
+        agent_id=agent_id,
+        detail=json.dumps(payload),
+    )
+
+    return {"ok": True, "event_id": event_id, "ts": ts, "path": "import"}
+
+
+def _emit_via_subprocess(event_type: str, payload: dict, agent_id: str) -> dict:
+    """Path (b): shell out to the canonical emitter as a subprocess.
+
+    Raises subprocess.CalledProcessError or TimeoutExpired on failure —
+    caller catches and surfaces audit_emit_unavailable.
+    """
+    if not CANONICAL_EMITTER_PATH.is_file():
+        raise FileNotFoundError(
+            f"Canonical emitter missing at {CANONICAL_EMITTER_PATH}"
+        )
+
+    event_id = str(uuid.uuid4())
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # The canonical emitter's --emit-direct mode (also added under the fallback-
+    # path contract) accepts a JSON envelope on stdin and writes one row to
+    # audit.db, returning 0 on success. If the canonical emitter does not yet
+    # expose --emit-direct, the subprocess will exit non-zero and the dual-
+    # fallback failure path triggers.
+    envelope = {
+        "event_id": event_id,
+        "timestamp": ts,
+        "event_type": event_type,
+        "agent_id": agent_id,
+        "detail": payload,
+    }
+
+    completed = subprocess.run(
+        [sys.executable, str(CANONICAL_EMITTER_PATH), "--emit-direct"],
+        input=json.dumps(envelope).encode("utf-8"),
+        capture_output=True,
+        timeout=SUBPROCESS_TIMEOUT_SEC,
+        check=True,
+    )
+    # Surface emitter's stdout for debugging, but ignore its content — the
+    # contract is "exit 0 means written".
+    _ = completed.stdout  # noqa: F841 (kept for breakpoints/inspection)
+
+    return {"ok": True, "event_id": event_id, "ts": ts, "path": "subprocess"}
+
+
+# ---------- MCP tool ----------
+
+
+@mcp.tool()
+async def conductor_audit_emit(event_type: str, payload: dict) -> dict:
+    """Append a single audit event to the conductor governance audit.db.
+
+    Two implementation paths only (CISO-002 fail-closed):
+      (a) import audit_emitter and call audit_emitter.emit_event_to_audit_db()
+      (b) shell out to `python3 audit_emitter.py --emit-direct` with the envelope on stdin
+    If BOTH fail, raise McpToolError("audit_emit_unavailable") and write a
+    sentinel record `audit_emit_failure` to stderr (conductor session log).
+
+    Direct sqlite writes from this server are PROHIBITED — they would bypass
+    the canonical emitter's authorization/signing path.
+
+    Returns:
+        {"ok": True, "event_id": "<uuid>", "ts": "<ISO8601>", "path": "import"|"subprocess"}
+
+    Raises:
+        McpToolError("audit_emit_unavailable") when both paths fail.
+    """
+    if not isinstance(event_type, str) or not event_type:
+        raise McpToolError("event_type must be a non-empty string")
+    if not isinstance(payload, dict):
+        raise McpToolError("payload must be an object")
+
+    # Allow the caller to override agent_id via payload.agent, falling back to
+    # the conventional DEFAULT_AGENT_ID. This keeps the audit row's agent_id
+    # column populated even when the JS template forgets to pass it.
+    agent_id = str(payload.get("agent") or DEFAULT_AGENT_ID)
+
+    # --- Path (a): import ---
+    import_error: Exception | None = None
+    try:
+        return _emit_via_import(event_type, payload, agent_id)
+    except Exception as exc:  # noqa: BLE001 — fail-closed requires catching all
+        import_error = exc
+        print(
+            f"[code-mode-audit-mcp] import-path failed: {exc!r}",
+            file=sys.stderr,
+        )
+
+    # --- Path (b): subprocess ---
+    subprocess_error: Exception | None = None
+    try:
+        return _emit_via_subprocess(event_type, payload, agent_id)
+    except Exception as exc:  # noqa: BLE001 — fail-closed requires catching all
+        subprocess_error = exc
+        print(
+            f"[code-mode-audit-mcp] subprocess-path failed: {exc!r}",
+            file=sys.stderr,
+        )
+
+    # --- Both paths failed: fail-closed. NO direct sqlite write. ---
+    sentinel = {
+        "sentinel": "audit_emit_failure",
+        "event_type": event_type,
+        "payload_preview": str(payload)[:200],
+        "import_error": repr(import_error),
+        "subprocess_error": repr(subprocess_error),
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "governance_db": str(GOVERNANCE_AUDIT_DB),
+    }
+    print(
+        f"[code-mode-audit-mcp] AUDIT_EMIT_FAILURE {json.dumps(sentinel)}",
+        file=sys.stderr,
+    )
+    raise McpToolError("audit_emit_unavailable")
+
+
+# ---------- Entrypoint ----------
+
+
+def main() -> None:
+    """Run the MCP server over stdio (the standard MCP transport)."""
+    mcp.run()
+
+
+if __name__ == "__main__":
+    main()

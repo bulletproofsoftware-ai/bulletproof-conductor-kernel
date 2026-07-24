@@ -1,0 +1,215 @@
+# Knowledge Schema — Structure definitions for process knowledge types
+# Defines the 4 knowledge types and their required fields
+
+version: "1.0"
+description: "Schema for rules, decision trees, SOPs, and edge case catalogs"
+
+knowledge_types:
+  rule:
+    description: "Deterministic condition with defined outcome"
+    required_fields:
+      - id
+      - domain
+      - name
+      - condition
+      - action
+      - source
+      - effective_date
+      - status
+    optional_fields:
+      - verified_by
+      - verified_date
+      - tags
+      - supersedes
+      - notes
+      - priority
+    schema:
+      id:
+        type: string
+        pattern: "^[A-Z]+-[A-Z]+(-[A-Z]+)*-\\d{3}$"
+        description: "Domain-scoped unique ID (e.g., INS-UW-001)"
+      domain:
+        type: string
+        description: "Dot-notation domain path (e.g., insurance.underwriting)"
+      name:
+        type: string
+        description: "Human-readable rule name"
+      condition:
+        type: string
+        description: "Boolean condition expression"
+        # Condition evaluation: uses simple boolean expressions with field references.
+        # Formal DSL (e.g., JsonLogic) planned for future versions.
+      action:
+        type: string
+        description: "Action to take when condition is true"
+      source:
+        type: string
+        description: "Where this rule came from (document, experience, regulation)"
+      effective_date:
+        type: string
+        format: date
+        description: "When this rule became active"
+      status:
+        type: string
+        enum: [active, candidate, deprecated, superseded]
+      verified_by:
+        type: string
+        description: "Who verified this rule"
+      verified_date:
+        type: string
+        format: date
+      tags:
+        type: array
+        items: { type: string }
+      supersedes:
+        type: string
+        description: "ID of rule this supersedes"
+      priority:
+        type: integer
+        minimum: 1
+        maximum: 5
+        description: "1=highest priority"
+
+  decision_tree:
+    description: "Multi-step branching logic"
+    required_fields:
+      - id
+      - domain
+      - name
+      - root
+      - source
+      - effective_date
+      - status
+    schema:
+      root:
+        type: object
+        description: "Root decision node"
+        properties:
+          condition:
+            type: string
+            description: "Boolean condition expression"
+          true_branch:
+            type: object
+            description: "Node or action when condition is true"
+          false_branch:
+            type: object
+            description: "Node or action when condition is false"
+      # Action leaf nodes have:
+      # action: string (what to do)
+      # priority: string (optional urgency level)
+
+  sop:
+    description: "Ordered step sequence with verification"
+    required_fields:
+      - id
+      - domain
+      - name
+      - steps
+      - source
+      - last_verified
+      - status
+    schema:
+      steps:
+        type: array
+        items:
+          type: object
+          required: [action]
+          properties:
+            action:
+              type: string
+              description: "Step description"
+            verification:
+              type: string
+              description: "Command or check to verify step completion"
+            rollback:
+              type: string
+              description: "How to undo this step if needed"
+            critical:
+              type: boolean
+              default: false
+              description: "If true, failure of this step aborts the procedure"
+
+  edge_case:
+    description: "Known exception with special handling"
+    required_fields:
+      - id
+      - domain
+      - name
+      - scenario
+      - standard_behavior
+      - exception
+      - source
+      - status
+    optional_fields:
+      - calculation
+      - test_case
+      - last_verified
+    schema:
+      scenario:
+        type: string
+        description: "When this edge case applies"
+      standard_behavior:
+        type: string
+        description: "What normally happens"
+      exception:
+        type: string
+        description: "How this case differs"
+      calculation:
+        type: string
+        description: "Formula or algorithm for the exception"
+      test_case:
+        type: string
+        description: "How to verify the exception is handled correctly"
+
+# Domain hierarchy
+domains:
+  insurance:
+    sub_domains: [underwriting, claims, reinsurance, pricing, compliance, cat_modeling]
+    id_prefix: "INS"
+  security:
+    sub_domains: [cis_controls, wazuh, csf, network, vulnerability, incident_response, authentication]
+    id_prefix: "SEC"
+  infrastructure:
+    sub_domains: [docker, nginx, deployment, monitoring, backup, dns]
+    id_prefix: "INFRA"
+  development:
+    sub_domains: [coding_standards, testing, ci_cd, git, review]
+    id_prefix: "DEV"
+  governance:
+    sub_domains: [audit, compliance, data_classification, privacy]
+    id_prefix: "GOV"
+  operations:
+    sub_domains: [n8n_workflows, memory_management, qdrant, obsidian]
+    id_prefix: "OPS"
+
+# Versioning
+versioning:
+  on_change: "Create new version, mark old as superseded"
+  version_format: "v{major}.{minor}"
+  queryable_by_date: true
+  retention: "All versions retained indefinitely"
+
+# Ingestion pipeline
+ingestion:
+  sources:
+    manual:
+      description: "Operator defines rules in YAML files"
+      status_on_create: "active"
+    document_extraction:
+      description: "LLM-assisted extraction from Obsidian vault"
+      status_on_create: "candidate"
+      requires_verification: true
+    trajectory_mining:
+      description: "Pattern detection from Qdrant trajectory records"
+      status_on_create: "candidate"
+      requires_verification: true
+    session_correction:
+      description: "Extracted from operator corrections during sessions"
+      status_on_create: "candidate"
+      requires_verification: true
+
+# Audit
+audit:
+  on_query: "Log rule ID, version, agent, timestamp to governance audit bus"
+  on_create: "Log creation event with source provenance"
+  on_deprecate: "Log deprecation with reason and replacement pointer"

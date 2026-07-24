@@ -1,0 +1,113 @@
+# conductor-kernel — recovery playbook (kernel-shipped)
+# Default 7-category recovery strategy table loaded by kernel.recovery_classify
+# (API.md §6 REQ-KER-020 / RC-15 / F-13).
+#
+# Override policy:
+#   - Caller-supplied playbooks are honored ONLY under the rules in API.md §6:
+#       1. Non-destructive categories (transient, model, infrastructure) may be
+#          overridden by a plain caller-supplied YAML.
+#       2. ALL categories may be overridden ONLY by a cosign-signed playbook.
+#       3. Operators MAY set recovery_override_mode = "strict" in operator config
+#          to disable ALL caller overrides regardless of signature.
+#   - Default mode is "permissive_signed" (rules 1 + 2).
+#
+# Audit emissions:
+#   - event_type: "recovery.classify" with { error_hash, category, strategy, playbook_source }
+#   - on override: additional event "recovery.override_consulted"
+#
+# TODO (Phase 2): expand each category's `strategies` block with the detailed
+# decision tree (failure-message patterns, exception classes, retry/backoff
+# specifics). v0.1.0 ships this minimal stub so the primitive has something to
+# load; the categories and selectors themselves are stable contract.
+
+playbook_version: "0.1.0"
+strict_mode_default: false   # operators MAY flip to true via operator config
+
+categories:
+
+  transient:
+    description: >
+      Transient failures recoverable by retry without changing the request shape.
+      Examples: HTTP 429, HTTP 503, network timeouts, short DNS hiccups.
+    default_strategy: retry
+    strategies:
+      retry:
+        retry_count_advice: 3
+        backoff_ms_advice:  500     # exponential base; 500 → 1000 → 2000
+        rationale: "Transient errors typically resolve within seconds."
+
+  model:
+    description: >
+      Model-level failures: context overflow, response truncation, completion
+      filter trip, model-side rate limit specific to the chosen model tier.
+    default_strategy: model_downgrade
+    strategies:
+      model_downgrade:
+        retry_count_advice: 1
+        backoff_ms_advice:  0
+        rationale: "Fall back to a smaller/cheaper model with shorter context."
+      retry:
+        retry_count_advice: 2
+        backoff_ms_advice:  1000
+        rationale: "For transient model-side rate limits."
+
+  data:
+    description: >
+      Bad input or malformed data: schema validation failures, missing required
+      fields, files that should exist but don't.
+    default_strategy: escalate
+    strategies:
+      escalate:
+        rationale: "Data errors require operator decision; auto-retry would loop."
+
+  permission:
+    description: >
+      Authorization / access failures: filesystem perm denied, missing API token,
+      governance human_gate refusal.
+    default_strategy: escalate
+    strategies:
+      escalate:
+        rationale: "Permission errors require operator intervention; auto-retry harmful."
+    override_allowed: false     # RC-15: destructive containment relevance
+
+  logic:
+    description: >
+      Logic errors: contract violations, invariant breakage, agent output that
+      contradicts the expectation schema.
+    default_strategy: fallback_agent
+    strategies:
+      fallback_agent:
+        rationale: "Try a different agent with stronger reasoning capability."
+      escalate:
+        rationale: "If no fallback agent available, escalate."
+    override_allowed: false     # RC-15
+
+  infrastructure:
+    description: >
+      Local infrastructure issues: Docker container down, Qdrant unreachable,
+      n8n unreachable, gemini CLI not on PATH.
+    default_strategy: wait_and_retry
+    strategies:
+      wait_and_retry:
+        retry_count_advice: 5
+        backoff_ms_advice:  5000    # service restart window
+        rationale: "Wait for service restart, then retry."
+      graceful_degrade:
+        rationale: "If service stays down, continue without it (e.g., skip gemini)."
+
+  external:
+    description: >
+      External-system failures with no clear fault attribution: vendor API
+      outage, third-party tool error, ambiguous network failure.
+    default_strategy: escalate
+    strategies:
+      escalate:
+        rationale: "External errors need operator triage."
+    override_allowed: false     # RC-15
+
+# Default category if classification fails (kernel.recovery_classify returns
+# this with audit event "recovery.classify_unclassifiable"):
+unclassifiable_default:
+  category: external
+  strategy: escalate
+  rationale: "Unclassifiable error; escalating to operator."

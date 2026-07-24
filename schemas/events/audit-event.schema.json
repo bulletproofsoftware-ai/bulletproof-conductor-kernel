@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.conductor-kernel.example/events/audit-event.v1.schema.json",
+  "title": "Audit Event Envelope (v1)",
+  "description": "Envelope for events emitted from inside n8n Code nodes via the kernel n8n-audit-emitter template (templates/n8n-audit-emitter.json). This is the payload the template POSTs to kernel.audit_emit. Required fields enforce REQ-KER-018 + RC-12 / F-12 (parent_id composition).",
+  "type": "object",
+  "required": [
+    "event_type",
+    "trace_id",
+    "parent_id",
+    "timestamp"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "description": "Audit event type (e.g., 'agent.dispatch', 'stream.event_handled', 'tool.call'). Defined by emitting node, recorded in governance audit.db event_type column.",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Causality root for this trace. Inherited from the incoming webhook event or computed at workflow start. All audit rows produced by this n8n execution share this trace_id."
+    },
+    "parent_id": {
+      "type": "string",
+      "description": "Identity of the emitting workflow node, formed as '<stream_id>:<n8n_node_id>' per F-12 per-node identity slot. The kernel relies on this composition so cross-system traces resolve node-level provenance.",
+      "pattern": "^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC. Auto-set by the audit-emitter if absent on the inbound POST."
+    },
+    "model_version": {
+      "type": ["string", "null"],
+      "description": "For agent.dispatch events: which Claude model the dispatched agent used."
+    },
+    "system_prompt_hash": {
+      "type": ["string", "null"],
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the dispatched agent's system prompt; null for non-dispatch events."
+    },
+    "prompt": {
+      "type": ["string", "null"],
+      "description": "Literal prompt content. Mutually exclusive with prompt_ref per RC-6 / F-04. KER-AE-004 audit_payload_mixed_forms if both are provided."
+    },
+    "prompt_ref": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["sha256", "storage_uri"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "storage_uri": { "type": "string", "format": "uri" }
+      },
+      "description": "Reference to prompt content stored elsewhere (RC-6)."
+    },
+    "response": {
+      "type": ["string", "null"],
+      "description": "Literal response content. See prompt for ref-form."
+    },
+    "response_ref": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["sha256", "storage_uri"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "storage_uri": { "type": "string", "format": "uri" }
+      }
+    },
+    "tool_calls": {
+      "type": ["array", "null"],
+      "description": "List of tool invocations during dispatch.",
+      "items": {
+        "type": "object",
+        "required": ["tool_name"],
+        "properties": {
+          "tool_name": { "type": "string" },
+          "input_summary": { "type": ["string", "null"] },
+          "output_summary": { "type": ["string", "null"] },
+          "latency_ms": { "type": ["number", "null"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "cot": {
+      "type": ["string", "null"],
+      "description": "Chain-of-thought if available; may be ref'd."
+    },
+    "confidence": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "CLUE agents' confidence score."
+    },
+    "untrusted_regions": {
+      "type": ["array", "null"],
+      "description": "When dispatch_agent_v2 envelope form is used, the regions that contained untrusted input.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "budget_echo": {
+      "type": ["object", "null"],
+      "description": "The budget object that governed this dispatch (echoed for traceability).",
+      "additionalProperties": true
+    },
+    "tokens_used": {
+      "type": ["object", "null"],
+      "properties": {
+        "input": { "type": "integer", "minimum": 0 },
+        "output": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "cost_usd": {
+      "type": ["number", "null"],
+      "minimum": 0
+    }
+  },
+  "allOf": [
+    {
+      "comment": "RC-6 / F-04 mutual exclusion: prompt vs prompt_ref",
+      "not": {
+        "allOf": [
+          { "properties": { "prompt": { "type": "string" } }, "required": ["prompt"] },
+          { "properties": { "prompt_ref": { "type": "object" } }, "required": ["prompt_ref"] }
+        ]
+      }
+    },
+    {
+      "comment": "RC-6 / F-04 mutual exclusion: response vs response_ref",
+      "not": {
+        "allOf": [
+          { "properties": { "response": { "type": "string" } }, "required": ["response"] },
+          { "properties": { "response_ref": { "type": "object" } }, "required": ["response_ref"] }
+        ]
+      }
+    }
+  ]
+}

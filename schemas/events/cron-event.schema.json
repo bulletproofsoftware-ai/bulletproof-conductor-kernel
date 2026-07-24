@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.conductor-kernel.example/events/cron-event.v1.schema.json",
+  "title": "Cron Event Envelope (v1)",
+  "description": "Envelope for scheduled (cron / polling) triggers in stream-mode. The kernel synthesizes this envelope when an n8n Schedule Trigger fires.",
+  "type": "object",
+  "required": ["source", "scheduled_for", "fired_at", "schedule_expression"],
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "type": "string",
+      "description": "Cron source identifier (e.g., 'cron.daily-2am')."
+    },
+    "scheduled_for": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the cron was scheduled to fire."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the trigger actually fired (may drift from scheduled_for under load)."
+    },
+    "schedule_expression": {
+      "type": "string",
+      "description": "Cron expression or polling interval as declared in subscription.schedule."
+    },
+    "previous_firing_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Timestamp of the previous successful firing, used for resumable per-cron processing."
+    },
+    "skipped_firings": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Number of scheduled firings that were skipped due to a previous run still being in flight."
+    },
+    "context": {
+      "type": "object",
+      "description": "Free-form context payload that the n8n Schedule Trigger may attach.",
+      "additionalProperties": true
+    }
+  }
+}

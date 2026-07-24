@@ -1,0 +1,107 @@
+# Security Domain — Process Knowledge
+# Rules, SOPs, and edge cases for security operations
+
+domain: security
+description: "Security operations knowledge — CIS controls, CSF, deployment hardening, incident response"
+
+rules:
+  - id: "SEC-CIS-001"
+    domain: "security.cis_controls"
+    name: "Docker container non-root requirement"
+    condition: "container_user == 'root'"
+    action: "block_deployment AND flag_security_violation"
+    source: "CIS Docker Benchmark v1.6 — Section 4.1"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["docker", "cis", "non-root"]
+    priority: 1
+
+  - id: "SEC-CIS-002"
+    domain: "security.cis_controls"
+    name: "TLS minimum version"
+    condition: "tls_version < 1.2"
+    action: "block_deployment AND require_tls_upgrade"
+    source: "CIS Controls v8 — Control 3.10"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["tls", "encryption", "cis"]
+    priority: 1
+
+  - id: "SEC-NET-001"
+    domain: "security.network"
+    name: "External service bind address"
+    condition: "bind_address == '0.0.0.0' AND service_type == 'internal'"
+    action: "change_bind_to_127.0.0.1 AND add_csf_rule"
+    source: "Server hardening playbook"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["binding", "network", "csf"]
+    priority: 1
+
+  - id: "SEC-VULN-001"
+    domain: "security.vulnerability"
+    name: "Critical CVE response SLA"
+    condition: "cvss_score >= 9.0"
+    action: "patch_within_24h OR apply_compensating_control AND notify_ciso"
+    source: "Vulnerability management policy"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["cve", "patching", "sla"]
+    priority: 1
+
+  - id: "SEC-AUTH-001"
+    domain: "security.authentication"
+    name: "API key rotation policy"
+    condition: "api_key_age_days > 90"
+    action: "rotate_key AND update_vault AND notify_dependents"
+    source: "Credential management policy"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["api_key", "rotation", "vault"]
+    priority: 2
+
+sops:
+  - id: "SEC-IR-SOP-001"
+    domain: "security.incident_response"
+    name: "Security incident triage"
+    source: "Incident response playbook"
+    last_verified: "2026-04-15"
+    status: active
+    steps:
+      - action: "Contain — isolate affected system from network"
+        verification: "Verify no active connections from isolated system"
+        critical: true
+      - action: "Preserve — capture forensic evidence before changes"
+        verification: "Verify log snapshots saved to secure storage"
+        critical: true
+      - action: "Identify — determine scope, entry vector, and impact"
+        verification: "Document findings in incident report"
+      - action: "Eradicate — remove threat and patch vulnerability"
+        verification: "Rescan with vulnerability scanner"
+      - action: "Recover — restore service from known-good state"
+        verification: "Run smoke tests on restored service"
+      - action: "Review — post-incident review within 48 hours"
+        verification: "Post-mortem document published"
+
+decision_trees: []
+
+edge_cases:
+  - id: "SEC-CSF-EC-001"
+    domain: "security.csf"
+    name: "CSF allow list timing on VPS restart"
+    scenario: "VPS restart causes CSF to reload rules — dynamic IPs may be dropped"
+    standard_behavior: "CSF preserves allow list across restarts"
+    exception: "Temporary allows (csf -ta) are cleared on restart. Only permanent allows (csf -a) survive."
+    # Automate: include `csf -a ${IP}` in deployment scripts rather than manual exception
+    source: "Operational experience on hi/h2 servers"
+    status: active

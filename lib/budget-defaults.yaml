@@ -1,0 +1,29 @@
+# conductor-kernel — budget defaults
+# Loaded by kernel.dispatch_agent / kernel.dispatch_agent_v2 when the caller does
+# not supply an explicit `budget` argument. Operators MAY override these values
+# per deployment by replacing this file with a deployment-specific copy at the
+# same path (the kernel resolves <kernel>/lib/budget-defaults.yaml).
+#
+# References:
+#   - API.md §6 kernel.dispatch_agent  (RC-7 / F-09: denial-of-wallet protection)
+#   - API.md §5.init kernel.stream.init (stream-mode REQUIRES an explicit budget;
+#       defaults are not inherited from this file because stream-mode amplifies
+#       the failure mode — KER-SI-006 stream_budget_required at init time).
+
+default_budget:
+  # Per-dispatch limits. A single agent dispatch cannot exceed these.
+  max_input_tokens:  10000
+  max_output_tokens: 10000
+  max_cost_usd:      0.50
+
+  # Per-trace rate limit. The kernel keeps per-trace counters in memory across
+  # the trace's lifetime (TTL = 1 hour after last dispatch).
+  max_dispatches_per_minute_per_trace: 30
+
+# Audit emissions on budget exceedance:
+#   - event_type: "dispatch.budget_exceeded" with payload { trace_id, limits, observed_values }
+#   - return code: KER-DA-005 budget_exceeded
+#
+# Caller responsibility on budget_exceeded:
+#   - typically: kernel.recovery_classify(error) → likely "external" / "escalate"
+#   - operator may bump limits via this file or via per-call budget arg

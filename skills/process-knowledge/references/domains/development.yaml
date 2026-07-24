@@ -1,0 +1,95 @@
+# Development Domain — Process Knowledge
+# Coding standards, testing, CI/CD, and review rules
+
+domain: development
+description: "Development standards and conventions for software engineering"
+
+rules:
+  - id: "DEV-CODE-001"
+    domain: "development.coding_standards"
+    name: "No placeholder implementations"
+    condition: "code_contains_placeholder == true"
+    action: "reject_implementation AND require_full_implementation"
+    source: "CLAUDE.md — core constraint"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["quality", "placeholder", "stubs"]
+    priority: 1
+
+  - id: "DEV-CODE-002"
+    domain: "development.coding_standards"
+    name: "No hardcoded secrets"
+    condition: "code_contains_secret_pattern == true"
+    action: "block_commit AND require_vault_reference"
+    source: "CLAUDE.md — security constraint"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["security", "secrets", "vault"]
+    priority: 1
+
+  - id: "DEV-TEST-001"
+    domain: "development.testing"
+    name: "BRD requirement test coverage"
+    condition: "brd_requirement_has_test == false"
+    action: "create_test_for_requirement"
+    source: "Conductor QA protocol"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["testing", "brd", "coverage"]
+    priority: 1
+
+  - id: "DEV-GIT-001"
+    domain: "development.git"
+    name: "Git ratcheting — commit after logical changes"
+    condition: "logical_change_complete == true AND uncommitted_changes > 0"
+    action: "create_commit_with_descriptive_message"
+    source: "Conductor critical rules"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["git", "commit", "ratcheting"]
+    priority: 2
+
+  - id: "DEV-GIT-002"
+    domain: "development.git"
+    name: "No force push to main"
+    condition: "target_branch == 'main' AND push_type == 'force'"
+    action: "block_push AND warn_operator"
+    source: "CLAUDE.md — destructive operations"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["git", "force_push", "safety"]
+    priority: 1
+
+sops:
+  - id: "DEV-REVIEW-SOP-001"
+    domain: "development.review"
+    name: "Pre-PR checklist"
+    source: "Conductor workflow best practices"
+    last_verified: "2026-04-16"
+    status: active
+    steps:
+      - action: "Run all tests and verify passing"
+        verification: "Test suite exits 0"
+        critical: true
+      - action: "Run linter and fix violations"
+        verification: "Linter exits 0"
+      - action: "Review diff for accidental changes"
+        verification: "git diff HEAD~1 reviewed"
+      - action: "Verify no secrets in diff"
+        verification: "gitleaks detect --no-git"
+        critical: true
+      - action: "Write descriptive PR description"
+        verification: "PR body contains Summary and Test Plan"
+
+decision_trees: []
+edge_cases: []

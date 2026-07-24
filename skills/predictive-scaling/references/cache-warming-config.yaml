@@ -1,0 +1,69 @@
+# Cache Warming Configuration — Pre-warming settings for predicted heavy workloads
+# Triggered by daily n8n workflow at 06:00
+
+version: "1.0"
+description: "Cache pre-warming configuration for Qdrant, prompt cache, and context pre-loading"
+
+trigger:
+  schedule: "daily at 06:00"
+  n8n_workflow: "predictive-patterns"
+  condition: "predicted_token_consumption > 100000 for next 3-hour window"
+
+qdrant_cache:
+  description: "Pre-load frequently accessed Qdrant collections into memory"
+  collections:
+    - name: "episodic_memory"
+      preload: true
+      priority: high
+    - name: "procedures"
+      preload: true
+      priority: high
+    - name: "trajectories"
+      preload: true
+      priority: medium
+    - name: "learnings"
+      preload: true
+      priority: medium
+    - name: "process_knowledge"
+      preload: true
+      priority: medium
+    - name: "outcome_metrics"
+      preload: false
+      priority: low
+  method: "Run lightweight query against each collection to force index loading"
+  timeout_per_collection_ms: 200
+  total_warming_budget_ms: 2000
+
+prompt_cache:
+  description: "Refresh system prompts to maximize Anthropic prompt caching"
+  target_hit_rate: 0.70
+  strategy:
+    - "Ensure CLAUDE.md content is stable (minimize changes that invalidate cache)"
+    - "Load common skill content early in session"
+    - "Structure system prompts with static content first, dynamic last"
+  monitoring:
+    track_hit_rate: true
+    log_misses: true
+    alert_below_rate: 0.50
+
+context_preload:
+  description: "Pre-read key files that agents frequently need"
+  patterns:
+    - "conductor-state.json"
+    - "BRD-tracker.json"
+    - "CLAUDE.md"
+    - "package.json"
+    - "docker-compose*.yml"
+  trigger: "On first agent dispatch of session"
+  max_files: 10
+  max_total_size_kb: 500
+
+# Effectiveness tracking
+tracking:
+  metrics:
+    - "cache_hit_rate_before_warming"
+    - "cache_hit_rate_after_warming"
+    - "first_query_latency_ms"
+    - "warming_duration_ms"
+  report_to: "outcome_metrics"
+  log_to: "conductor-state.json.predictive_scaling"

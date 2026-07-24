@@ -1,0 +1,131 @@
+# Health Checks — Infrastructure monitoring configuration
+# Used by conductor-recovery-engine health monitor
+# Advisory only — health signals influence strategy selection but never block
+
+version: "1.0"
+description: "Background health check configuration for infrastructure dependencies"
+
+global:
+  enabled: true
+  check_on_session_start: true
+  continuous_monitoring: false
+  default_interval_seconds: 60
+  default_timeout_ms: 5000
+  default_unhealthy_threshold: 3
+  default_healthy_threshold: 1
+
+services:
+  # SECURITY: check_command values are allowlisted patterns, not arbitrary strings.
+  # The health check runner MUST validate commands against known safe patterns
+  # before execution. Never eval user-controllable strings.
+  docker_containers:
+    description: "Local Docker container health"
+    check_command: "docker ps --format '{{.Names}}\t{{.Status}}' 2>/dev/null"
+    interval_seconds: 60
+    unhealthy_threshold: 3
+    critical_containers:
+      - name: "qdrant"
+        health_endpoint: "http://localhost:6333/healthz"  # Override: ${QDRANT_HOST}
+      - name: "n8n"
+        health_endpoint: "http://localhost:5678/healthz"  # Override: ${N8N_HOST}
+      - name: "codehardener"
+        health_endpoint: "http://localhost:7002/health"  # Override: ${CODEHARDENER_HOST}
+    recovery_hint: "Run 'docker compose up -d' in the appropriate directory"
+
+  anthropic_api:
+    description: "Anthropic API availability and latency"
+    check_type: "latency_probe"
+    method: "Track latency from recent agent dispatches"
+    interval_seconds: 0
+    thresholds:
+      warning_p95_ms: 10000
+      critical_p95_ms: 30000
+      window_size: 10
+    recovery_hint: "Check status.anthropic.com — consider model downgrade if degraded"
+
+  qdrant:
+    description: "Qdrant vector database"
+    health_endpoint: "http://localhost:6333/healthz"
+    interval_seconds: 60
+    timeout_ms: 3000
+    unhealthy_threshold: 2
+    dependencies:
+      - "memory_store"
+      - "memory_recall"
+      - "trajectory"
+      - "procedure"
+      - "learning"
+    recovery_hint: "cd your Qdrant compose directory && docker compose up -d qdrant"
+
+  n8n:
+    description: "n8n workflow automation engine"
+    health_endpoint: "http://localhost:5678/healthz"
+    interval_seconds: 60
+    timeout_ms: 5000
+    unhealthy_threshold: 2
+    dependencies:
+      - "scheduled_workflows"
+      - "webhook_triggers"
+      - "event_routing"
+    recovery_hint: "Check n8n container: docker logs n8n --tail 50"
+
+  gemini_cli:
+    description: "Gemini CLI for independent validation"
+    check_command: "which gemini && gemini --version 2>/dev/null"
+    check_type: "command_exists"
+    interval_seconds: 300
+    unhealthy_threshold: 1
+    dependencies:
+      - "gemini_validation"
+      - "adversarial_review"
+    recovery_hint: "Gemini CLI unavailable — validation degrades gracefully (non-blocking)"
+
+  codehardener:
+    description: "Code Hardener QA backend"
+    health_endpoint: "http://localhost:7002/health"
+    interval_seconds: 120
+    timeout_ms: 5000
+    unhealthy_threshold: 2
+    dependencies:
+      - "hardening_loop"
+      - "security_scanning"
+    recovery_hint: "cd ${CODEHARDENER_ROOT:-~/Documents/Code/codehardener} && docker compose up -d"
+
+  git:
+    description: "Git repository access"
+    # Pre-check: verify .git directory exists or `git rev-parse --is-inside-work-tree`
+    check_command: "git status --porcelain 2>/dev/null"
+    check_type: "command_success"
+    interval_seconds: 120
+    unhealthy_threshold: 1
+    dependencies:
+      - "git_ratcheting"
+      - "checkpoint_git_sha"
+    recovery_hint: "Check git repository state — may need to resolve conflicts"
+
+# Health status aggregation
+aggregation:
+  status_levels:
+    - healthy: "All services responding within thresholds"
+    - degraded: "One or more non-critical services unhealthy"
+    - critical: "One or more critical services unhealthy"
+    - unknown: "Health checks not yet run or timed out"
+
+  impact_mapping:
+    healthy: "All recovery strategies available"
+    degraded: "Proactively select fallback strategies for affected services"
+    critical: "Escalate immediately for affected workflows"
+    unknown: "Proceed with caution, assume services available"
+
+# Pre-emptive strategy adjustment
+preemptive_rules:
+  - condition: "qdrant_unhealthy"
+    action: "Skip memory-dependent recovery steps, use local state only"
+  - condition: "anthropic_api_degraded"
+    action: "Pre-select model_downgrade strategy, avoid opus dispatches"
+  - condition: "n8n_unhealthy"
+    action: "Skip event emission, queue events for later delivery"
+  - condition: "gemini_cli_unavailable"
+    action: "Skip Gemini validation, log warning, proceed without"
+  - condition: "codehardener_unhealthy"
+    action: "Skip hardening loop, note in conductor-state.json"

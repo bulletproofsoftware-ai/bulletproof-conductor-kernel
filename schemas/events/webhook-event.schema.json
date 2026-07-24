@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.conductor-kernel.example/events/webhook-event.v1.schema.json",
+  "title": "Webhook Event Envelope (v1)",
+  "description": "Generic webhook trigger envelope used by stream-mode subscriptions of kind 'webhook' when a domain plugin has not declared a more specific event_schema_ref. REQ-XCT-007 boundary validation defaults to this when no per-source schema is published.",
+  "type": "object",
+  "required": ["source", "received_at", "body"],
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "type": "string",
+      "description": "Identifier of the upstream source (e.g., 'edr.alerts', 'idp.events'). Must match the subscription.source on the receiving stream."
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the kernel received the webhook (RFC-3339 UTC)."
+    },
+    "event_id": {
+      "type": ["string", "null"],
+      "description": "Optional upstream event id. Used for idempotent processing — if the same event_id has been handled before, the kernel may skip dispatch."
+    },
+    "headers": {
+      "type": "object",
+      "description": "Selected HTTP headers from the inbound request. The kernel does NOT include Authorization or X-Signature here — those go in auth_material per RC-4.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "body": {
+      "description": "The webhook payload as parsed JSON (or raw object). Domain plugins replace this with a typed body schema.",
+      "type": ["object", "array", "string", "number", "boolean", "null"]
+    },
+    "ingestion_metadata": {
+      "type": "object",
+      "description": "Free-form metadata recorded by the receiving stream — e.g., load balancer node id, n8n execution id.",
+      "additionalProperties": true
+    }
+  }
+}

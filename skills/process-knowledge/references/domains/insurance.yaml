@@ -1,0 +1,153 @@
+# Insurance Domain — Process Knowledge
+# Rules, decision trees, SOPs, and edge cases for insurance operations
+
+domain: insurance
+description: "Insurance industry process knowledge — underwriting, claims, reinsurance, pricing, compliance"
+
+rules:
+  - id: "INS-UW-001"
+    domain: "insurance.underwriting"
+    name: "Dual approval threshold"
+    condition: "tiv > 5_000_000"
+    action: "require_dual_underwriter_approval"
+    source: "Meridian underwriting manual v2.1"
+    effective_date: "2026-01-15"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    # verified_date: Initial batch verification. Future rules should use actual verification dates.
+    status: active
+    tags: ["approval", "threshold", "tiv"]
+    priority: 1
+
+  - id: "INS-UW-002"
+    domain: "insurance.underwriting"
+    name: "Coastal property wind load"
+    condition: "property_distance_coast_mi <= 25 AND construction_type != 'reinforced_concrete'"
+    action: "apply_wind_load_surcharge AND require_engineering_report"
+    source: "Cat modeling team guidelines"
+    effective_date: "2026-02-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["coastal", "wind", "cat"]
+    priority: 2
+
+  - id: "INS-UW-003"
+    domain: "insurance.underwriting"
+    name: "Prior loss surcharge"
+    condition: "loss_count_5yr >= 3 OR loss_ratio_5yr > 0.75"
+    action: "apply_experience_modification AND flag_for_senior_review"
+    source: "Rating manual section 4.2"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["experience", "loss_ratio", "surcharge"]
+    priority: 2
+
+  - id: "INS-CLM-001"
+    domain: "insurance.claims"
+    name: "Large loss reporting threshold"
+    condition: "incurred_amount > 500_000"
+    action: "notify_reinsurance_team AND create_large_loss_report"
+    source: "Claims handling procedures v3"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["large_loss", "reinsurance", "reporting"]
+    priority: 1
+
+  - id: "INS-COMP-001"
+    domain: "insurance.compliance"
+    name: "NAIC model law rate filing"
+    condition: "rate_change_pct > 7.0 OR new_product == true"
+    action: "prepare_prior_approval_filing AND require_actuarial_certification"
+    source: "NAIC Model Rate Filing Law"
+    effective_date: "2026-01-01"
+    verified_by: "bulletproofsoftware-ai"
+    verified_date: "2026-04-16"
+    status: active
+    tags: ["rate_filing", "compliance", "naic"]
+    priority: 1
+
+decision_trees:
+  - id: "INS-CLM-DT-001"
+    domain: "insurance.claims"
+    name: "Cat event claim routing"
+    source: "Cat modeling team SOPs"
+    effective_date: "2026-03-01"
+    status: active
+    root:
+      condition: "event_type == 'hurricane'"
+      true_branch:
+        condition: "wind_speed_mph >= 74 AND distance_to_coast_mi <= 50"
+        true_branch:
+          action: "route_to_cat_modeling"
+          priority: "urgent"
+        false_branch:
+          action: "route_to_standard_claims"
+      false_branch:
+        condition: "event_type == 'earthquake'"
+        true_branch:
+          action: "route_to_cat_modeling"
+          priority: "urgent"
+        false_branch:
+          condition: "event_type == 'flood'"
+          true_branch:
+            action: "route_to_flood_specialist"
+          false_branch:
+            action: "route_to_standard_claims"
+
+  - id: "INS-UW-DT-001"
+    domain: "insurance.underwriting"
+    name: "Risk tier assignment"
+    source: "Underwriting guidelines v2"
+    effective_date: "2026-02-01"
+    status: active
+    root:
+      condition: "loss_ratio_5yr > 0.90"
+      true_branch:
+        action: "assign_tier_high_risk"
+        priority: "senior_review"
+      false_branch:
+        condition: "loss_ratio_5yr > 0.60"
+        true_branch:
+          action: "assign_tier_moderate_risk"
+        false_branch:
+          action: "assign_tier_standard_risk"
+
+sops: []
+
+edge_cases:
+  - id: "INS-REINS-EC-001"
+    domain: "insurance.reinsurance"
+    name: "Aggregate deductible net retention"
+    scenario: "Treaty with aggregate deductible (not occurrence-based)"
+    standard_behavior: "Net retention = gross loss - ceded amount per occurrence"
+    exception: "With aggregate deductible, accumulate losses across all occurrences before applying deductible"
+    calculation: "net_retention = max(0, aggregate_losses - aggregate_deductible) * retention_pct"
+    source: "Prism reinsurance module design doc"
+    status: active
+    test_case: "3 occurrences of $2M each, aggregate deductible $5M, retention 20% → net = max(0, 6M-5M)*0.2 = $200K"
+    # Boundary: when aggregate_losses == aggregate_deductible → net = 0
+    # Boundary: when retention_pct = 100% → net = full excess
+
+  - id: "INS-REINS-EC-002"
+    domain: "insurance.reinsurance"
+    name: "Clash cover loss allocation"
+    scenario: "Single event affecting multiple policies under same reinsurance program"
+    standard_behavior: "Each policy's loss reported independently to treaty"
+    exception: "When policies share a clash cover, losses are aggregated before applying the clash layer"
+    calculation: "clash_recovery = max(0, sum(policy_losses) - clash_retention) capped at clash_limit"
+    source: "Reinsurance program design notes"
+    status: active
+
+  - id: "INS-CLM-EC-001"
+    domain: "insurance.claims"
+    name: "Subrogation on no-fault states"
+    scenario: "Property claim with potential subrogation in a no-fault jurisdiction"
+    standard_behavior: "Pursue subrogation against responsible third party"
+    exception: "In no-fault states, subrogation rights may be limited or prohibited depending on policy type and state statute"
+    source: "Legal department advisory 2025-12"
+    status: active

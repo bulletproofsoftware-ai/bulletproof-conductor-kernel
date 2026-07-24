@@ -1,0 +1,161 @@
+# Metrics Definitions — 8 outcome metrics for conductor orchestration
+# Used by conductor-outcome-collector agent
+
+version: "1.0"
+description: "Definitions, sources, and calculation methods for all outcome metrics"
+
+metrics:
+  task_completion_rate:
+    name: "Task Completion Rate"
+    description: "Percentage of dispatched tasks that reach verified completion"
+    formula: "completed_tasks / (completed_tasks + failed_tasks + abandoned_tasks)"
+    # NOTE: Rate measures terminal-state completion only (excludes in_progress tasks)
+    source: "conductor-state.json — task_queue + completed_tasks + failed_tasks"
+    granularity: ["per_agent", "per_tier", "per_project"]
+    unit: "percentage"
+    good_direction: "higher"
+    thresholds:
+      healthy: ">= 0.85"
+      warning: ">= 0.70"
+      critical: "< 0.70"
+
+  time_to_resolution:
+    name: "Time-to-Resolution (TTR)"
+    description: "Wall-clock time from task dispatch to verified completion"
+    formula: "completed_at - dispatched_at"
+    # idle_time tracking removed — TTR includes wait time. See governance audit events for idle analysis.
+    source: "governance audit bus timestamps"
+    granularity: ["per_task", "per_agent", "per_tier"]
+    unit: "minutes"
+    good_direction: "lower"
+    # Thresholds are global defaults — override per-project via conductor-state.json.project_characteristics
+    thresholds:
+      TRIVIAL: { healthy: "< 5", warning: "< 15", critical: ">= 15" }
+      MINOR: { healthy: "< 30", warning: "< 60", critical: ">= 60" }
+      STANDARD: { healthy: "< 120", warning: "< 240", critical: ">= 240" }
+      MAJOR: { healthy: "< 480", warning: "< 960", critical: ">= 960" }
+
+  first_pass_success_rate:
+    name: "First-Pass Success Rate"
+    description: "Percentage of tasks passing validation without rework"
+    formula: "tasks_passed_first_validation / total_validated_tasks"
+    source: "gemini_validations[] — count where attempt_number == 1 AND verdict == PASS"
+    granularity: ["per_agent", "per_task_type"]
+    unit: "percentage"
+    good_direction: "higher"
+    thresholds:
+      healthy: ">= 0.80"
+      warning: ">= 0.60"
+      critical: "< 0.60"
+
+  rework_frequency:
+    name: "Rework Frequency"
+    description: "Average remediation cycles before acceptance"
+    formula: "total_remediation_cycles / total_tasks"
+    source: "conductor-state.json — remediation_loops, gemini_validations[].attempt_number"
+    granularity: ["per_agent", "per_finding_type"]
+    unit: "cycles"
+    good_direction: "lower"
+    thresholds:
+      healthy: "< 1.0"
+      warning: "< 2.0"
+      critical: ">= 2.0"
+
+  quality_score_trend:
+    name: "Quality Score Trend"
+    description: "Rolling 7-day average of validation and quality scores"
+    formula: "rolling_avg(gemini_completion_pct + code_assurance_score) over 7 days"
+    source: "gemini_validations[].completion_pct, Code Assurance scores"
+    # Code Assurance scores are optional. When unavailable, quality trend uses gemini_completion_pct alone.
+    granularity: ["per_agent", "weekly"]
+    unit: "score (0-100)"
+    good_direction: "higher"
+    thresholds:
+      healthy: ">= 85"
+      warning: ">= 70"
+      critical: "< 70"
+
+  recovery_rate:
+    name: "Recovery Rate"
+    description: "Percentage of failed tasks recovered by self-healing"
+    formula: "recovery_successes / (recovery_successes + recovery_escalations)"
+    source: "recovery.recovery_history[] — count by outcome"
+    granularity: ["per_failure_category"]
+    unit: "percentage"
+    good_direction: "higher"
+    thresholds:
+      healthy: ">= 0.70"
+      warning: ">= 0.50"
+      critical: "< 0.50"
+
+  context_efficiency:
+    name: "Context Efficiency"
+    description: "Useful output tokens per input token consumed"
+    formula: "output_tokens_in_deliverables / total_input_tokens"
+    source: "token_budget.dispatches[] — input/output tokens"
+    granularity: ["per_agent", "per_model_tier"]
+    unit: "ratio"
+    good_direction: "higher"
+    thresholds:
+      healthy: ">= 0.40"
+      warning: ">= 0.20"
+      critical: "< 0.20"
+
+  cost_per_successful_outcome:
+    name: "Cost Per Successful Outcome"
+    description: "Total cost divided by successful completions"
+    formula: "total_cost_usd / successful_completions"
+    source: "token_budget.total_cost_usd / completed_tasks count with outcome=success"
+    granularity: ["per_project", "per_workflow"]
+    unit: "USD"
+    good_direction: "lower"
+    thresholds:
+      TRIVIAL: { healthy: "< 0.50", warning: "< 1.00", critical: ">= 1.00" }
+      MINOR: { healthy: "< 2.00", warning: "< 5.00", critical: ">= 5.00" }
+      STANDARD: { healthy: "< 10.00", warning: "< 25.00", critical: ">= 25.00" }
+      MAJOR: { healthy: "< 50.00", warning: "< 100.00", critical: ">= 100.00" }
+
+# Regression detection
+regression:
+  method: "Compare current value to 7-day rolling average"
+  threshold_pct: 15
+  minimum_data_points: 5
+  # For users with <5 tasks/week, regression detection is deferred to per-project rolling averages.
+  alert_channels: ["console", "obsidian_daily_note"]
+  # fallback_destination: console (if Obsidian MCP unavailable)
+  cooldown_hours: 24
+
+# Qdrant Storage Backend
+qdrant_storage:
+  collection: "outcome_metrics"
+  vector_size: 768
+  distance: "Cosine"
+  on_disk: true
+  indexes:
+    - field: timestamp
+      type: datetime
+      purpose: efficient retention pruning and time-range queries
+  record_types:
+    per_task:
+      description: "Individual task outcome records"
+      fields: ["task_id", "agent", "tier", "project", "completion_status", "ttr_minutes", "first_pass", "rework_cycles", "quality_score", "cost_usd", "timestamp"]
+      retention_days: 90
+    daily_aggregate:
+      description: "Daily aggregate metrics by agent and project"
+      fields: ["date", "agent", "project", "completion_rate", "avg_ttr", "first_pass_rate", "avg_rework", "avg_quality", "avg_cost", "task_count"]
+      retention_days: 365
+    weekly_snapshot:
+      description: "Weekly trend snapshots for historical comparison"
+      fields: ["week_start", "metrics_snapshot", "regression_flags"]
+      retention: "indefinite"
+  ingestion:
+    trigger: "After every completed_task entry in conductor-state.json"
+    method: "Passive observation via PostToolUse hook on conductor-state.json writes"
+    batch: false
+    # Ingestion is debounced — metrics are collected at phase completion, not every state write.
+
+# Data retention
+retention:
+  granular_records: "90 days"
+  daily_aggregates: "1 year"
+  weekly_snapshots: "indefinite"

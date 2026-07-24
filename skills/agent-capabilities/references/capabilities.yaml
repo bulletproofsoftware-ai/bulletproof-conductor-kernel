@@ -1,0 +1,733 @@
+# Agent Capabilities Schema
+# Defines what each agent accepts, produces, and requires
+# Used by conductor for capability validation before handoffs
+
+version: "1.1"
+description: "Agent capability definitions for formal handoff protocol with intent engineering support"
+
+agents:
+  # Core Workflow Agents
+  conductor-project-setup:
+    accepts:
+      - project_initialization
+      - harness_setup
+    produces:
+      - feature_list.json
+      - claude_progress.txt
+      - CLAUDE.md
+      - BRD-tracker.json
+      - conductor-state.json
+      - git_repository
+    requires: []
+    constraints:
+      - "Must be first agent in new project workflow"
+    intent_constraints:
+      - "Must gather intent objectives, trade-offs, delegation boundaries, and hard limits during setup"
+      - "Must populate intent block in conductor-state.json"
+      - "Must extract hard limits from global CLAUDE.md as baseline"
+
+  conductor-research:
+    accepts:
+      - project_description
+      - domain_research_request
+      - requirements_gathering
+    produces:
+      - BRD_document
+      - requirements_list
+      - user_stories
+      - acceptance_criteria
+    requires: []
+    constraints:
+      - "BRD must have numbered requirements (REQ-XXX)"
+      - "All integrations must be identified (INT-XXX)"
+
+  conductor-ciso:
+    accepts:
+      - brd_security_review
+      - code_security_review
+      - threat_model_request
+      - compliance_review
+      - cbom_generation
+    produces:
+      - security_requirements
+      - threat_model
+      - stride_analysis
+      - owasp_coverage
+      - security_report
+      - vulnerability_list
+      - remediation_plan
+      - crypto_bill_of_materials
+      - pqc_readiness_assessment
+    requires:
+      - BRD_document
+    constraints:
+      - "Must review before implementation"
+      - "Must approve before release"
+      - "Must generate C-BOM at STANDARD+ tiers"
+    intent_constraints:
+      - "Must validate security decisions against intent trade-offs (e.g., security vs speed)"
+      - "Must flag any security-related hard_limit violations"
+
+  conductor-architect:
+    accepts:
+      - brd_requirements
+      - design_request
+      - specification_review
+      - architecture_decision
+    produces:
+      - specification
+      - page_inventory
+      - link_matrix
+      - component_list
+      - decision
+      - diagram
+    requires:
+      - BRD-tracker.json
+      - BRD_document
+    constraints:
+      - "Every BRD requirement must have todo_file"
+      - "No placeholder content allowed"
+
+  conductor-qa:
+    accepts:
+      - test_planning_request
+      - code_for_testing
+      - test_request
+      - gap_analysis_request
+    produces:
+      - test_plan
+      - test_files
+      - test_results
+      - coverage_report
+      - bug_report
+      - gap_analysis
+    requires:
+      - TODO_spec_files
+    constraints:
+      - "Tests must cover 100% of BRD requirements"
+      - "Must use testing-security-stack docker container"
+
+  conductor-builder:
+    accepts:
+      - specification
+      - bug_fix_request
+      - feature_request
+      - implementation_task
+      - high_level_request
+      - implementation_planning
+    produces:
+      - code
+      - tests
+      - documentation
+      - updated_brd_tracker
+      - implementation_plan
+      - step_breakdown
+      - confidence_scores
+    requires:
+      - TODO_spec_file
+      - BRD-tracker.json
+    constraints:
+      - "No stub implementations"
+      - "No placeholder code"
+      - "Must update BRD-tracker status"
+      - "Move spec to COMPLETE when done"
+      - "Mode selected by conductor: plan-only, implement-only, plan-and-implement"
+      - "Confidence scoring required for plan mode"
+    intent_constraints:
+      - "Must respect trade-off resolutions when making implementation decisions"
+      - "Must check delegation_boundaries before executing — pause for human_in_loop tasks"
+      - "Must never violate hard_limits"
+
+  conductor-critic:
+    accepts:
+      - checkpoint_validation
+      - gap_analysis_request
+      - deliverable_review
+      - completeness_check
+      - intent_alignment_validation
+    produces:
+      - validation_report
+      - gap_analysis
+      - blocking_decision
+      - remediation_items
+      - intent_alignment_report
+    requires:
+      - checkpoint_artifacts
+      - BRD-tracker.json
+    constraints:
+      - "Must block on critical gaps"
+      - "Must verify against BRD requirements"
+    intent_constraints:
+      - "Must validate trade-off compliance at every checkpoint"
+      - "Must check hard_limits compliance — violations are always blocking regardless of tier"
+      - "Must verify delegation_boundaries were respected"
+      - "Must include Intent Alignment section in every checkpoint report"
+
+  conductor-code-reviewer:
+    accepts:
+      - code_for_review
+      - security_review_request
+      - quality_review_request
+    produces:
+      - review_report
+      - issue_list
+      - recommendations
+    requires:
+      - implementation_files
+    constraints:
+      - "Must check OWASP Top 10"
+      - "Must assess code quality"
+
+  conductor-completeness-validator:
+    accepts:
+      - completeness_validation
+      - artifact_verification
+      - project_health_check
+    produces:
+      - completeness_report
+      - completeness_verdict
+      - domain_findings
+    requires: []
+    constraints:
+      - "Must run after all code-modifying phases (hardening, adversarial review)"
+      - "Must detect project type before selecting domains"
+      - "Build failure skips runtime domains but not tests"
+      - "Phase 7 only — never dispatched during implementation phases"
+
+  conductor-doc-gen:
+    accepts:
+      - documentation_request
+      - readme_request
+      - architecture_doc_request
+    produces:
+      - README.md
+      - ARCHITECTURE.md
+      - SETUP.md
+      - QUICK-START.md
+      - FAQ.md
+      - SBOM
+      - CHANGELOG.md
+    requires:
+      - complete_implementation
+    constraints:
+      - "No placeholder content"
+      - "SBOM required for all projects"
+
+  conductor-api-docs:
+    accepts:
+      - api_documentation_request
+      - openapi_generation
+    produces:
+      - openapi.yaml
+      - swagger_ui
+      - endpoint_reference
+      - error_codes
+    requires:
+      - api_implementation
+    constraints:
+      - "All endpoints must be documented"
+      - "Examples required for each endpoint"
+
+  # Supporting Agents
+  conductor-frontend-designer:
+    accepts:
+      - ui_design_request
+      - component_design
+      - design_system_creation
+    produces:
+      - design_tokens
+      - component_specs
+      - page_mockups
+      - responsive_specs
+    requires:
+      - page_inventory
+      - design_requirements
+    constraints:
+      - "No generic AI aesthetics"
+      - "All states must be designed"
+      - "WCAG AA compliance required"
+
+  conductor-devops:
+    accepts:
+      - cicd_request
+      - deployment_request
+      - infrastructure_request
+    produces:
+      - ci_pipeline
+      - cd_pipeline
+      - dockerfile
+      - kubernetes_manifests
+      - helm_chart
+      - rollback_procedure
+    requires:
+      - deployment_requirements
+    constraints:
+      - "Multi-stage Docker builds"
+      - "Non-root container user"
+      - "Resource limits required"
+
+  conductor-database:
+    accepts:
+      - schema_design_request
+      - migration_request
+      - query_optimization
+    produces:
+      - schema_documentation
+      - migration_files
+      - rollback_migrations
+      - index_recommendations
+      - seed_data
+    requires:
+      - data_requirements
+    constraints:
+      - "All migrations must have rollback"
+      - "Indexes for expected queries"
+
+  conductor-api-design:
+    accepts:
+      - api_design_request
+      - openapi_creation
+      - contract_test_request
+    produces:
+      - openapi_spec
+      - graphql_schema
+      - contract_tests
+      - mock_server
+      - breaking_change_report
+    requires:
+      - api_requirements
+    constraints:
+      - "Versioning strategy required"
+      - "Error codes documented"
+
+  conductor-performance:
+    accepts:
+      - load_test_request
+      - performance_audit
+      - profiling_request
+    produces:
+      - load_test_scripts
+      - lighthouse_report
+      - bundle_analysis
+      - performance_budget
+      - query_analysis
+    requires:
+      - performance_requirements
+    constraints:
+      - "Smoke test always required"
+      - "Performance budget file required"
+
+  conductor-observability:
+    accepts:
+      - monitoring_request
+      - alerting_request
+      - slo_definition
+    produces:
+      - prometheus_config
+      - grafana_dashboards
+      - alert_rules
+      - slo_definitions
+      - runbooks
+      - incident_response
+    requires:
+      - service_architecture
+    constraints:
+      - "At least 3 dashboards required"
+      - "Runbooks for common issues"
+
+  conductor-compliance:
+    accepts:
+      - compliance_check
+      - sbom_request
+      - audit_preparation
+    produces:
+      - sbom
+      - license_analysis
+      - compliance_report
+      - policy_as_code
+      - vulnerability_report
+    requires:
+      - codebase
+    constraints:
+      - "SBOM in CycloneDX/SPDX format"
+      - "No GPL in proprietary code"
+
+  # Orchestration Agents
+  conductor:
+    accepts:
+      - workflow_orchestration
+      - project_orchestration
+    produces:
+      - conductor-state.json
+      - workflow_coordination
+      - agent_assignments
+      - checkpoint_records
+      - handoff_records
+      - tier_classification
+      - nhi_instance_registry
+    requires:
+      - project_context
+    constraints:
+      - "Must follow phase sequence"
+      - "Must validate at checkpoints"
+      - "Tier classification before workflow load"
+      - "Inline confidence scoring at decision points"
+      - "Inline validation on agent dispatch/receipt"
+      - "Inline workflow discipline at every gate"
+      - "Must generate NHI ID for every agent dispatch"
+      - "Must track prohibited behaviors and enforce kill switch"
+      - "Must track token costs and enforce budget limits"
+    intent_constraints:
+      - "Must use 5-signal matrix (scope, type, risk, ambiguity, intent_sensitivity) for tier classification"
+      - "Must enforce delegation_boundaries before every agent dispatch"
+      - "Must auto-escalate tier when task intersects hard_limits"
+      - "Must propagate intent block through intent cascade: CLAUDE.md → project CLAUDE.md → conductor-state.json → agent constraints"
+
+  conductor-advisor:
+    accepts:
+      - guidance_request
+      - recommendation_request
+      - best_practices_query
+    produces:
+      - advice
+      - recommendations
+      - trade_off_analysis
+    requires: []
+    constraints:
+      - "Advisory only — no implementation"
+      - "Must cite reasoning for recommendations"
+
+  conductor-checkpoint:
+    accepts:
+      - checkpoint_save
+      - checkpoint_resume
+      - checkpoint_list
+      - checkpoint_inspect
+    produces:
+      - checkpoint_record
+      - restored_state
+      - checkpoint_list
+    requires: []
+    constraints:
+      - "Must validate checkpoint integrity before restore"
+      - "Hot/warm/cold storage tiers"
+      - "Automatic pruning per retention policy"
+
+  conductor-gemini-validator:
+    accepts:
+      - agent_output_validation
+      - targeted_revalidation
+    produces:
+      - validation_verdict
+      - finding_list
+      - completion_percentage
+    requires:
+      - agent_output
+      - expected_deliverables
+    constraints:
+      - "Must use Gemini CLI as independent validator"
+      - "Validation must be performed by a model instance independent of the primary actor's context"
+      - "PASS/FAIL/PARTIAL/ERROR verdicts only"
+      - "Targeted mode for re-validation of specific findings"
+
+  conductor-llm-security:
+    accepts:
+      - prompt_injection_scan
+      - output_validation
+      - guardrail_check
+    produces:
+      - security_scan_result
+      - injection_detection_report
+      - guardrail_violation_list
+    requires: []
+    constraints:
+      - "Must scan all agent prompts for injection vectors"
+      - "Must validate outputs against safety policies"
+
+  conductor-n8n:
+    accepts:
+      - workflow_automation_request
+      - n8n_workflow_creation
+      - webhook_configuration
+    produces:
+      - n8n_workflow
+      - webhook_endpoint
+      - automation_config
+    requires:
+      - automation_requirements
+    constraints:
+      - "Must use n8n MCP tools for workflow management"
+      - "Webhooks must use authenticated endpoints"
+
+  # Review Agents
+  conductor-qa-review:
+    accepts:
+      - code_review_request
+      - design_review_request
+      - gap_analysis_request
+      - compliance_audit_request
+      - adversarial_review_request
+    produces:
+      - review_report
+      - gate_verdict
+      - findings_cache_update
+      - consensus_report
+      - compliance_report
+      - regression_analysis
+      - todo_files
+    requires: []
+    constraints:
+      - "Must use multi-model consensus when available (Claude + Gemini + Codex)"
+      - "Profile selection by tier: TRIVIAL=quick, MINOR/STANDARD=standard, MAJOR=thorough"
+      - "Gate verdicts are binding: BLOCK and NEEDS CHANGES prevent phase progression"
+      - "Regression findings auto-escalate severity by one level"
+      - "Compliance audits require --framework parameter (nist|owasp|cis)"
+    intent_constraints:
+      - "Must validate review scope against intent trade-offs (e.g., speed vs thoroughness)"
+      - "Must flag findings that intersect hard_limits as BLOCK regardless of consensus"
+      - "Escalated findings (1/3 + CRITICAL) require user decision — never auto-dismiss"
+
+  # Analysis Agents
+  conductor-analyze-codebase:
+    accepts:
+      - codebase_analysis
+      - brownfield_analysis
+      - structure_request
+    produces:
+      - directory_map
+      - file_inventory
+      - architecture_diagram
+      - tech_debt_assessment
+      - conventions_doc
+    requires:
+      - codebase_path
+    constraints:
+      - "Must identify integration points"
+      - "Must document patterns"
+
+  conductor-bug-find:
+    accepts:
+      - bug_investigation
+      - error_analysis
+      - debugging_request
+    produces:
+      - root_cause_analysis
+      - fix_recommendation
+      - reproduction_steps
+    requires:
+      - error_description
+    constraints:
+      - "Must verify root cause"
+      - "Must provide fix path"
+
+  # Recovery & Automation Agents (PRDs 12-17)
+  conductor-recovery-engine:
+    accepts:
+      - failure_classification
+      - recovery_strategy_selection
+      - health_check_request
+      - mttr_report
+    produces:
+      - failure_classification_result
+      - recovery_action
+      - health_status_report
+      - mttr_metrics
+      - recovery_audit_event
+    requires:
+      - error_context
+    constraints:
+      - "Must fail open — never mask original errors"
+      - "Max 2 attempts per strategy per step"
+      - "Must checkpoint before recovery actions"
+      - "Must record all recovery attempts in audit trail"
+      - "MTTR tracked per failure category"
+    intent_constraints:
+      - "Permission and logic failures always escalate — no auto-recovery"
+      - "Model downgrade respects budget thresholds from Agent Economics"
+
+  conductor-event-router:
+    accepts:
+      - event_emission
+      - event_routing
+      - workflow_health_check
+      - dead_letter_replay
+    produces:
+      - routed_event
+      - dead_letter_entry
+      - workflow_health_report
+      - event_throughput_metrics
+    requires: []
+    constraints:
+      - "Events are fire-and-forget from emitters (async, non-blocking)"
+      - "Route events within 200ms"
+      - "Failed webhook delivery → 3 retries → dead letter queue"
+      - "Rate limit: max 100 events/second per category"
+    intent_constraints:
+      - "All events logged to governance audit bus"
+      - "Dead letter queue entries require manual review"
+
+  conductor-outcome-collector:
+    accepts:
+      - outcome_collection
+      - metrics_aggregation
+      - value_attribution
+      - outcome_report
+    produces:
+      - outcome_metrics
+      - value_report
+      - regression_alert
+      - weekly_digest
+      - project_retrospective
+    requires:
+      - conductor-state.json
+    constraints:
+      - "Passive observation only — no agent instrumentation"
+      - "Value attribution requires operator-defined baselines"
+      - "90-day granular retention, indefinite aggregates"
+    intent_constraints:
+      - "Never fabricate value numbers — baselines must be explicitly defined"
+
+  conductor-prediction-engine:
+    accepts:
+      - workload_prediction
+      - cost_forecast
+      - cache_warming_request
+      - concurrency_recommendation
+    produces:
+      - workload_profile
+      - cost_forecast_result
+      - model_routing_recommendation
+      - concurrency_advisory
+    requires: []
+    constraints:
+      - "Predictions are advisory — never override operator choices"
+      - "Statistical analysis only — no ML models"
+      - "Prediction latency < 500ms"
+    intent_constraints:
+      - "Budget trajectory alerts when spend exceeds 70% with <50% work remaining"
+
+  conductor-agent-gateway:
+    accepts:
+      - external_agent_invocation
+      - capability_discovery
+      - context_sharing
+    produces:
+      - agent_result
+      - capability_registry
+      - context_envelope
+    requires:
+      - authentication
+    constraints:
+      - "Only external_callable agents exposed (15 of 34)"
+      - "Async invocation with job ID polling"
+      - "Input validated against declared schema"
+      - "Rate limits per caller type"
+    intent_constraints:
+      - "All external invocations logged to governance audit bus"
+      - "Governance metadata travels with context envelopes"
+
+  # Meta Agents (standalone - not bundled)
+  # PLANNED — no agent file yet. Tasks route to conductor-ciso as fallback.
+  retrospective:
+    accepts:
+      - post_execution_analysis
+      - pattern_extraction
+      - agent_improvement_proposal
+    produces:
+      - execution_analysis
+      - pattern_library_entries
+      - improvement_proposals
+      - agent_benchmarks
+      - trace_analysis
+    requires:
+      - conductor-state.json
+      - completed_workflow
+    constraints:
+      - "Post-execution ONLY - never during active workflow"
+      - "Requires explicit user request or scheduled review"
+      - "Improvement proposals require A/B testing before apply"
+
+  conductor-refactor:
+    accepts:
+      - refactoring_request
+      - modernization_request
+      - cleanup_request
+    produces:
+      - refactored_code
+      - migration_guide
+      - breaking_changes
+    requires:
+      - existing_code
+    constraints:
+      - "Must preserve functionality"
+      - "Must have test coverage"
+
+  # Security Agents
+  conductor-pentest-coordinator:
+    accepts:
+      - pentest_scope
+      - attack_scenarios
+      - finding_tracking
+    produces:
+      - scope_document
+      - attack_plan
+      - findings_report
+      - remediation_verification
+    requires:
+      - BRD_document
+      - architecture_docs
+    constraints:
+      - "Must verify remediation"
+      - "Must track all findings"
+
+  # PLANNED — no agent file yet. Tasks route to conductor-ciso as fallback.
+  secrets-lifecycle:
+    accepts:
+      - secrets_audit
+      - rotation_request
+      - vault_integration
+    produces:
+      - secrets_inventory
+      - rotation_policy
+      - vault_config
+      - detection_report
+    requires:
+      - codebase
+    constraints:
+      - "No secrets in code"
+      - "Rotation policy required"
+
+  # PLANNED — no agent file yet. Tasks route to conductor-ciso as fallback.
+  supply-chain-security:
+    accepts:
+      - slsa_provenance
+      - artifact_signing
+      - commit_verification
+    produces:
+      - provenance_attestation
+      - signed_artifacts
+      - verification_report
+    requires:
+      - build_artifacts
+      - sbom
+    constraints:
+      - "SLSA Level 2 minimum"
+      - "All artifacts signed"
+
+# Validation Rules
+validation:
+  handoff_rules:
+    - "Source agent must have 'produces' that matches target 'accepts'"
+    - "All 'requires' must be available before handoff"
+    - "Constraints must be satisfied before completion"
+
+  capability_check:
+    - "Agent can only produce what is in 'produces' list"
+    - "Agent cannot accept tasks not in 'accepts' list"
+    - "Missing requirements block handoff initiation"
+
+  intent_check:
+    - "Agents with intent_constraints must respect intent block in conductor-state.json"
+    - "Hard limit violations are always blocking regardless of tier"
+    - "Delegation boundary violations trigger immediate escalation"
+    - "Trade-off resolution decisions must be logged for drift detection"

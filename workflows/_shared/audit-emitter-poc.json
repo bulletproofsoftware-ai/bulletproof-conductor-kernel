@@ -1,0 +1,164 @@
+{
+  "_meta": {
+    "name": "audit-emitter-poc",
+    "version": "0.1.0-phase3",
+    "implements": "REQ-XCT-009 (POC migration), REQ-XCT-002 (audit emitter integration)",
+    "purpose": "Phase 3 proof-of-concept: migrates 'Memory: Skill Discovery' to use the kernel n8n-audit-emitter template.",
+    "source_workflow": "claude-memory-mcp/workflows/memory-skill-discovery.json (workflow id 'skill-discovery')",
+    "differences_from_source": [
+      "Added 'Build Audit Row' Code node after 'Skill Discovery'",
+      "Added 'POST kernel.audit_emit' HTTP node after 'Build Audit Row'",
+      "Skill Discovery output is passed as payload.summary into the audit row",
+      "trace_id is generated per cron firing (no upstream webhook to inherit from)",
+      "event_type set to 'memory.skill_discovery.cron_completed'",
+      "parent_id composed as <workflow_id>:<node_id> per F-12"
+    ],
+    "deployment_steps": [
+      "1. Set KERNEL_AUDIT_TOKEN on the n8n instance (via env or n8n credential).",
+      "2. Set KERNEL_AUDIT_ENDPOINT to the governance-plugin audit listener URL (default http://localhost:5681/audit/emit).",
+      "3. Import via n8n_create_workflow (or direct API) against http://localhost:5679.",
+      "4. Activate the workflow.",
+      "5. Trigger manually or wait for the weekly cron (Sunday 6am).",
+      "6. Verify a row appears in governance-plugin/state/audit.db with event_type='memory.skill_discovery.cron_completed' and parent_id matching the F-12 pattern."
+    ]
+  },
+  "name": "audit-emitter-poc \u2014 Memory Skill Discovery",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 6 * * 0",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "skill-discovery-code",
+      "name": "Skill Discovery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst QDRANT_URL = 'http://qdrant:6333';\nconst QDRANT_API_KEY = process.env.QDRANT_API_KEY || '';\nconst OLLAMA_URL = 'http://host.docker.internal:11434';\n\nasync function qdrantScroll(collection, filter, limit=100) {\n  const body = {limit, with_payload: true, with_vector: false};\n  if (filter) body.filter = filter;\n  const r = await fetch(`${QDRANT_URL}/collections/${collection}/points/scroll`, {\n    method: 'POST', headers: {'api-key': QDRANT_API_KEY, 'Content-Type': 'application/json'},\n    body: JSON.stringify(body)\n  });\n  const d = await r.json();\n  return d.result?.points || [];\n}\n\nasync function qdrantStore(collection, id, vector, payload) {\n  await fetch(`${QDRANT_URL}/collections/${collection}/points`, {\n    method: 'PUT', headers: {'api-key': QDRANT_API_KEY, 'Content-Type': 'application/json'},\n    body: JSON.stringify({points: [{id, vector, payload}]})\n  });\n}\n\nasync function embed(text) {\n  const r = await fetch(`${OLLAMA_URL}/api/embed`, {\n    method: 'POST', headers: {'Content-Type': 'application/json'},\n    body: JSON.stringify({model: 'nomic-embed-text', input: text})\n  });\n  const d = await r.json();\n  return d.embeddings?.[0] || null;\n}\n\nfunction uuid() { return crypto.randomUUID(); }\n\nconst trajectories = await qdrantScroll('trajectories', null, 200);\nconst now = Date.now();\nconst recent = trajectories.filter(t => {\n  const created = new Date(t.payload?.created_at || 0).getTime();\n  return (now - created) < 30 * 24 * 60 * 60 * 1000;\n});\n\nconst sequences = {};\nfor (const t of recent) {\n  const tools = t.payload?.tool_sequence || t.payload?.steps || [];\n  if (!Array.isArray(tools) || tools.length < 3) continue;\n  const key = tools.slice(0, 5).join(' -> ');\n  if (!sequences[key]) sequences[key] = {count: 0, tools, examples: []};\n  sequences[key].count++;\n  sequences[key].examples.push(t.id);\n}\n\nconst patterns = Object.entries(sequences).filter(([,v]) => v.count >= 3);\nlet proposed = 0;\n\nfor (const [key, pattern] of patterns) {\n  const vec = await embed('skill pattern: ' + key);\n  if (vec) {\n    await qdrantStore('discovered_skills', uuid(), vec, {\n      pattern: key, tool_sequence: pattern.tools, occurrence_count: pattern.count,\n      example_trajectories: pattern.examples.slice(0, 5),\n      proposed_at: new Date().toISOString(), status: 'proposed',\n      source: 'auto-discovered'\n    });\n    proposed++;\n  }\n}\n\nreturn [{\n  json: {\n    trace_id: uuid(),\n    summary: {\n      trajectories_analyzed: recent.length,\n      patterns_found: patterns.length,\n      skills_proposed: proposed\n    }\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "audit-emitter-code",
+      "name": "Build Audit Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// kernel-audit-emitter (POC integration)\nconst crypto = require('crypto');\n\nconst upstream = $input.first().json || {};\nconst trace_id = upstream.trace_id;\nconst summary = upstream.summary || {};\n\nif (!trace_id) {\n  throw new Error('KER-AE-002 missing required payload field: trace_id (upstream node must supply it)');\n}\n\nconst stream_id = $workflow.id;\nconst node_id = ($node && $node.id) || ($node && $node.name) || 'unknown';\nconst parent_id = `${stream_id}:${node_id}`;\n\nif (!parent_id.match(/^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/)) {\n  throw new Error(`KER-AE-002 parent_id failed F-12 pattern: ${parent_id}`);\n}\n\nconst auditRow = {\n  event_type: 'memory.skill_discovery.cron_completed',\n  trace_id,\n  parent_id,\n  timestamp: new Date().toISOString(),\n  response: JSON.stringify(summary),\n  tool_calls: [\n    { tool_name: 'qdrant_scroll', input_summary: 'trajectories last 30d' },\n    { tool_name: 'ollama_embed', input_summary: `${summary.patterns_found || 0} patterns` },\n    { tool_name: 'qdrant_store', input_summary: `${summary.skills_proposed || 0} skills proposed` }\n  ]\n};\n\nconst token = $env.KERNEL_AUDIT_TOKEN || (typeof process !== 'undefined' && process.env && process.env.KERNEL_AUDIT_TOKEN);\nif (!token) {\n  throw new Error('KER-AE-003 audit_hmac_token_missing \u2014 set KERNEL_AUDIT_TOKEN env var on the n8n instance');\n}\n\nconst canonical = JSON.stringify(auditRow, Object.keys(auditRow).sort());\nconst hmacSignature = crypto.createHmac('sha256', token).update(canonical, 'utf8').digest('hex');\n\nconst endpoint = $env.KERNEL_AUDIT_ENDPOINT || 'http://localhost:5681/audit/emit';\n\nreturn [{\n  json: {\n    auditRow,\n    hmacSignature,\n    endpoint,\n    _meta: {\n      n8n_execution_id: $execution.id,\n      n8n_node_id: node_id,\n      n8n_workflow_id: stream_id,\n      canonical_bytes: canonical.length\n    }\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "audit-emitter-http",
+      "name": "POST kernel.audit_emit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.endpoint}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.auditRow) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Kernel-Audit-Signature",
+              "value": "=sha256={{$json.hmacSignature}}"
+            },
+            {
+              "name": "X-Kernel-Audit-Source",
+              "value": "=n8n:{{$json._meta.n8n_workflow_id}}:{{$json._meta.n8n_node_id}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000,
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
+          "retry": {
+            "enabled": true,
+            "retryConfig": {
+              "attempts": 2,
+              "delayBetweenAttempts": 1000
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [
+        [
+          {
+            "node": "Skill Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skill Discovery": {
+      "main": [
+        [
+          {
+            "node": "Build Audit Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Audit Row": {
+      "main": [
+        [
+          {
+            "node": "POST kernel.audit_emit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York"
+  }
+}

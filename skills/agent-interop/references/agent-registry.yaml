@@ -1,0 +1,561 @@
+# Agent Registry — Machine-readable catalog of all conductor agents
+# Used by conductor-agent-gateway for capability discovery and invocation routing
+# Cross-reference: skills/agent-capabilities/references/capabilities.yaml (internal routing matrix)
+# This registry is the external-facing API contract. capabilities.yaml is authoritative for internal routing.
+
+version: "1.0"
+description: "Capability registry for all 37 conductor agents (34 implemented + 3 planned) with input/output schemas"
+
+agents:
+  # === EXTERNALLY CALLABLE (15 agents) ===
+
+  conductor-ciso:
+    id: "conductor.ciso"
+    name: "CISO Security Reviewer"
+    description: "Reviews code, infrastructure, and architecture for security vulnerabilities and compliance gaps"
+    capabilities: ["security_review", "compliance_assessment", "threat_modeling", "vulnerability_analysis", "cbom_generation"]
+    input_schema:
+      type: object
+      required: ["target"]
+      properties:
+        target:
+          type: string
+          description: "File path, directory, or description of what to review"
+        scope:
+          type: string
+          enum: ["code", "infrastructure", "architecture", "full"]
+          default: "full"
+        frameworks:
+          type: array
+          items:
+            type: string
+            enum: ["CIS", "NIST", "SOC2", "GDPR", "HIPAA", "PCI-DSS"]
+    output_schema:
+      type: object
+      properties:
+        findings: { type: array, items: { type: object } }
+        risk_score: { type: number, minimum: 0, maximum: 10 }
+        recommendations: { type: array, items: { type: string } }
+        report_path: { type: string }
+    model_tier: opus
+    avg_duration_seconds: 180
+    trust_level: 4
+    external_callable: true
+
+  conductor-research:
+    id: "conductor.research"
+    name: "Research Agent"
+    description: "Deep research on technical topics, market analysis, requirements gathering"
+    capabilities: ["technical_research", "market_analysis", "requirements_gathering", "competitive_analysis"]
+    input_schema:
+      type: object
+      required: ["topic"]
+      properties:
+        topic:
+          type: string
+          description: "Research topic or question"
+        depth:
+          type: string
+          enum: ["quick", "standard", "deep"]
+          default: "standard"
+        output_format:
+          type: string
+          enum: ["summary", "report", "brd"]
+          default: "report"
+    output_schema:
+      type: object
+      properties:
+        content: { type: string }
+        sources: { type: array, items: { type: string } }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    model_tier: opus
+    avg_duration_seconds: 240
+    trust_level: 4
+    external_callable: true
+
+  conductor-architect:
+    id: "conductor.architect"
+    name: "Architecture Designer"
+    description: "Designs system architecture, specifications, and technical decisions"
+    capabilities: ["architecture_design", "specification", "decision_making", "diagram_generation"]
+    input_schema:
+      type: object
+      required: ["requirements"]
+      properties:
+        requirements:
+          type: string
+          description: "Requirements or BRD content to design for"
+        constraints:
+          type: array
+          items: { type: string }
+        existing_architecture:
+          type: string
+          description: "Path to existing architecture docs if brownfield"
+    output_schema:
+      type: object
+      properties:
+        specification: { type: string }
+        components: { type: array }
+        decisions: { type: array }
+        diagrams: { type: array }
+    model_tier: opus
+    avg_duration_seconds: 300
+    trust_level: 4
+    external_callable: true
+
+  conductor-builder:
+    id: "conductor.builder"
+    name: "Implementation Builder"
+    description: "Implements features, fixes bugs, and builds from specifications"
+    capabilities: ["implementation", "bug_fix", "feature_development", "planning"]
+    input_schema:
+      type: object
+      required: ["task"]
+      properties:
+        task:
+          type: string
+          description: "What to build or fix"
+        spec_path:
+          type: string
+          description: "Path to specification file"
+        mode:
+          type: string
+          enum: ["plan-only", "implement-only", "plan-and-implement"]
+          default: "plan-and-implement"
+    output_schema:
+      type: object
+      properties:
+        files_created: { type: array, items: { type: string } }
+        files_modified: { type: array, items: { type: string } }
+        tests_passing: { type: boolean }
+    model_tier: sonnet
+    avg_duration_seconds: 300
+    trust_level: 3
+    external_callable: true
+
+  conductor-qa:
+    id: "conductor.qa"
+    name: "Quality Assurance"
+    description: "Test planning, execution, gap analysis, and coverage reporting"
+    capabilities: ["test_planning", "test_execution", "gap_analysis", "coverage"]
+    input_schema:
+      type: object
+      required: ["target"]
+      properties:
+        target:
+          type: string
+          description: "What to test"
+        test_type:
+          type: string
+          enum: ["unit", "integration", "e2e", "security", "performance", "all"]
+          default: "all"
+    output_schema:
+      type: object
+      properties:
+        test_results: { type: object }
+        coverage: { type: number }
+        gaps: { type: array }
+    model_tier: sonnet
+    avg_duration_seconds: 240
+    trust_level: 3
+    external_callable: true
+
+  conductor-qa-review:
+    id: "conductor.qa-review"
+    name: "Multi-Model QA Reviewer"
+    description: "Multi-model adversarial code and design review with consensus engine"
+    capabilities: ["code_review", "design_review", "gap_analysis", "compliance_audit"]
+    input_schema:
+      type: object
+      required: ["review_type"]
+      properties:
+        review_type:
+          type: string
+          enum: ["code", "design", "gap", "compliance"]
+        target:
+          type: string
+        framework:
+          type: string
+          enum: ["nist", "owasp", "cis"]
+    output_schema:
+      type: object
+      properties:
+        verdict: { type: string }
+        findings: { type: array }
+        consensus_report: { type: string }
+    model_tier: opus
+    avg_duration_seconds: 300
+    trust_level: 4
+    external_callable: true
+
+  conductor-code-reviewer:
+    id: "conductor.code-reviewer"
+    name: "Code Reviewer"
+    description: "Reviews code for bugs, security, quality, and adherence to standards"
+    capabilities: ["code_review", "security_review", "quality_review"]
+    input_schema:
+      type: object
+      required: ["target"]
+      properties:
+        target:
+          type: string
+          description: "File or directory to review"
+        focus:
+          type: array
+          items:
+            type: string
+            enum: ["security", "quality", "performance", "maintainability"]
+    output_schema:
+      type: object
+      properties:
+        issues: { type: array }
+        recommendations: { type: array }
+        overall_assessment: { type: string }
+    model_tier: sonnet
+    avg_duration_seconds: 120
+    trust_level: 3
+    external_callable: true
+
+  conductor-pentest-coordinator:
+    id: "conductor.pentest"
+    name: "Pentest Coordinator"
+    description: "Coordinates penetration testing — scoping, attack planning, finding tracking"
+    capabilities: ["pentest_scope", "attack_planning", "finding_tracking", "remediation_verification"]
+    input_schema:
+      type: object
+      required: ["scope"]
+      properties:
+        scope:
+          type: string
+          description: "What to test"
+        attack_types:
+          type: array
+          items:
+            type: string
+            enum: ["web", "api", "infrastructure", "social", "physical"]
+    output_schema:
+      type: object
+      properties:
+        findings: { type: array }
+        risk_summary: { type: object }
+        remediation_plan: { type: array }
+    model_tier: opus
+    avg_duration_seconds: 360
+    trust_level: 4
+    external_callable: true
+
+  conductor-compliance:
+    id: "conductor.compliance"
+    name: "Compliance Checker"
+    description: "SBOM generation, license analysis, compliance reporting"
+    capabilities: ["sbom", "license_analysis", "compliance_report", "vulnerability_report"]
+    input_schema:
+      type: object
+      required: ["target"]
+      properties:
+        target:
+          type: string
+        report_type:
+          type: string
+          enum: ["sbom", "license", "compliance", "vulnerability"]
+    output_schema:
+      type: object
+      properties:
+        report: { type: string }
+        findings: { type: array }
+        sbom_path: { type: string }
+    model_tier: sonnet
+    avg_duration_seconds: 180
+    trust_level: 3
+    external_callable: true
+
+  conductor-doc-gen:
+    id: "conductor.doc-gen"
+    name: "Documentation Generator"
+    description: "Generates README, architecture docs, setup guides, changelogs"
+    capabilities: ["readme", "architecture_docs", "setup_guide", "changelog", "sbom"]
+    input_schema:
+      type: object
+      required: ["doc_type"]
+      properties:
+        doc_type:
+          type: string
+          enum: ["readme", "architecture", "setup", "quickstart", "faq", "changelog", "sbom"]
+        project_path:
+          type: string
+    output_schema:
+      type: object
+      properties:
+        doc_path: { type: string }
+        doc_content: { type: string }
+    model_tier: haiku
+    avg_duration_seconds: 120
+    trust_level: 2
+    external_callable: true
+
+  conductor-api-design:
+    id: "conductor.api-design"
+    name: "API Designer"
+    description: "Designs APIs with OpenAPI specs, GraphQL schemas, contract tests"
+    capabilities: ["openapi", "graphql", "contract_tests", "mock_server"]
+    input_schema:
+      type: object
+      required: ["requirements"]
+      properties:
+        requirements:
+          type: string
+        api_style:
+          type: string
+          enum: ["rest", "graphql", "grpc"]
+          default: "rest"
+    output_schema:
+      type: object
+      properties:
+        spec_path: { type: string }
+        endpoints: { type: array }
+        breaking_changes: { type: array }
+    model_tier: sonnet
+    avg_duration_seconds: 180
+    trust_level: 3
+    external_callable: true
+
+  conductor-api-docs:
+    id: "conductor.api-docs"
+    name: "API Documentation"
+    description: "Generates OpenAPI docs, Swagger UI, endpoint references"
+    capabilities: ["openapi_docs", "swagger", "endpoint_reference", "error_codes"]
+    input_schema:
+      type: object
+      required: ["api_path"]
+      properties:
+        api_path:
+          type: string
+    output_schema:
+      type: object
+      properties:
+        docs_path: { type: string }
+    model_tier: haiku
+    avg_duration_seconds: 90
+    trust_level: 2
+    external_callable: true
+
+  conductor-database:
+    id: "conductor.database"
+    name: "Database Specialist"
+    description: "Schema design, migrations, query optimization, index recommendations"
+    capabilities: ["schema_design", "migrations", "query_optimization", "index_recommendations"]
+    input_schema:
+      type: object
+      required: ["task"]
+      properties:
+        task:
+          type: string
+        db_type:
+          type: string
+          enum: ["postgresql", "mysql", "sqlite", "mongodb"]
+          default: "postgresql"
+    output_schema:
+      type: object
+      properties:
+        migrations: { type: array }
+        schema_doc: { type: string }
+        recommendations: { type: array }
+    model_tier: sonnet
+    avg_duration_seconds: 150
+    trust_level: 3
+    external_callable: true
+
+  conductor-performance:
+    id: "conductor.performance"
+    name: "Performance Analyst"
+    description: "Load testing, profiling, bundle analysis, performance budgets"
+    capabilities: ["load_testing", "profiling", "bundle_analysis", "performance_budget"]
+    input_schema:
+      type: object
+      required: ["target"]
+      properties:
+        target:
+          type: string
+        test_type:
+          type: string
+          enum: ["load", "profile", "bundle", "lighthouse"]
+    output_schema:
+      type: object
+      properties:
+        results: { type: object }
+        recommendations: { type: array }
+        budget_path: { type: string }
+    model_tier: sonnet
+    avg_duration_seconds: 180
+    trust_level: 3
+    external_callable: true
+
+  conductor-advisor:
+    id: "conductor.advisor"
+    name: "Technical Advisor"
+    description: "Guidance, recommendations, and best practices for technical decisions"
+    capabilities: ["technical_guidance", "recommendations", "best_practices"]
+    input_schema:
+      type: object
+      required: ["question"]
+      properties:
+        question:
+          type: string
+        domain:
+          type: string
+    output_schema:
+      type: object
+      properties:
+        advice: { type: string }
+        alternatives: { type: array }
+        trade_offs: { type: array }
+    model_tier: sonnet
+    avg_duration_seconds: 60
+    trust_level: 2
+    external_callable: true
+
+  # === INTERNAL ONLY (19 agents — not exposed) ===
+  # Listed for completeness; external_callable: false means gateway ignores them
+
+  conductor:
+    id: "conductor.orchestrator"
+    schema_level: stub  # Internal agents have reduced schema (id + reason only)
+    external_callable: false
+    reason: "Core orchestrator — internal coordination only"
+
+  conductor-checkpoint:
+    id: "conductor.checkpoint"
+    external_callable: false
+    reason: "State management primitive — no external meaning"
+
+  conductor-completeness-validator:
+    id: "conductor.completeness-validator"
+    external_callable: false
+    reason: "Internal quality gate"
+
+  conductor-critic:
+    id: "conductor.critic"
+    external_callable: false
+    reason: "Internal gate enforcement"
+
+  conductor-gemini-validator:
+    id: "conductor.gemini-validator"
+    external_callable: false
+    reason: "Internal accountability — Gemini grades, not called externally"
+
+  conductor-project-setup:
+    id: "conductor.project-setup"
+    external_callable: false
+    reason: "Session initialization — no external meaning"
+
+  conductor-analyze-codebase:
+    id: "conductor.analyze-codebase"
+    external_callable: false
+    reason: "Internal analysis step"
+
+  conductor-bug-find:
+    id: "conductor.bug-find"
+    external_callable: false
+    reason: "Internal debugging"
+
+  conductor-refactor:
+    id: "conductor.refactor"
+    external_callable: false
+    reason: "Internal code modification"
+
+  conductor-frontend-designer:
+    id: "conductor.frontend-designer"
+    external_callable: false
+    reason: "Requires interactive design review"
+
+  conductor-devops:
+    id: "conductor.devops"
+    external_callable: false
+    reason: "Infrastructure modification — too risky for external"
+
+  conductor-observability:
+    id: "conductor.observability"
+    external_callable: false
+    reason: "Internal monitoring setup"
+
+  conductor-n8n:
+    id: "conductor.n8n"
+    external_callable: false
+    reason: "Internal workflow management"
+
+  conductor-recovery-engine:
+    id: "conductor.recovery-engine"
+    external_callable: false
+    reason: "Internal recovery orchestration"
+
+  conductor-event-router:
+    id: "conductor.event-router"
+    external_callable: false
+    reason: "Internal event infrastructure"
+
+  conductor-outcome-collector:
+    id: "conductor.outcome-collector"
+    external_callable: false
+    reason: "Internal metrics collection"
+
+  conductor-prediction-engine:
+    id: "conductor.prediction-engine"
+    external_callable: false
+    reason: "Internal optimization"
+
+  conductor-agent-gateway:
+    id: "conductor.agent-gateway"
+    external_callable: false
+    reason: "The gateway itself — meta-invocation not allowed"
+
+  conductor-llm-security:
+    id: "conductor.llm-security"
+    external_callable: false
+    reason: "Internal security enforcement"
+  conductor-compliance-overview:
+    id: "conductor.compliance-overview"
+    name: "Compliance Overview Generator"
+    description: "Auto-generates auditor-grade COMPLIANCE-OVERVIEW.md at project completion; pre-fills from conductor-state.json + BRD-tracker.json; triggers Obsidian vault sync"
+    capabilities: ["compliance_summary_generation", "audit_artifact_assembly", "framework_mapping"]
+    model_tier: sonnet
+    avg_duration_seconds: 60
+    trust_level: 3
+    external_callable: false
+    reason: "Internal — produces audit artifacts; consumed by orchestrator at Phase 7"
+
+
+  # === INTERNAL-ONLY (implemented, not externally callable) ===
+
+  conductor-retrospective:
+    id: "conductor.retrospective"
+    name: "Workflow Retrospective"
+    description: "Captures workflow narrative, mines trajectories for reusable patterns, proposes process_knowledge candidates"
+    capabilities: ["retrospective_analysis", "pattern_mining", "knowledge_capture"]
+    model_tier: sonnet
+    avg_duration_seconds: 120
+    trust_level: 3
+    external_callable: false
+    reason: "Internal lesson-learning agent; consumed by orchestrator only"
+
+  conductor-secrets-lifecycle:
+    id: "conductor.secrets-lifecycle"
+    name: "Secrets Lifecycle Manager"
+    description: "Owns credential lifecycle: discovery, vault enforcement, rotation policy, leak prevention, post-incident rebinding"
+    capabilities: ["secrets_audit", "rotation_request", "vault_integration", "leak_detection"]
+    model_tier: sonnet
+    avg_duration_seconds: 180
+    trust_level: 4
+    external_callable: false
+    reason: "Internal — handles sensitive material; never exposed externally"
+
+  conductor-supply-chain-security:
+    id: "conductor.supply-chain-security"
+    name: "Supply Chain Security Agent"
+    description: "SLSA provenance, artifact signing, dependency verification, build integrity, commit signature validation"
+    capabilities: ["slsa_provenance", "artifact_signing", "commit_verification", "dependency_provenance"]
+    model_tier: sonnet
+    avg_duration_seconds: 240
+    trust_level: 4
+    external_callable: false
+    reason: "Internal — handles signing keys and build attestation"
+

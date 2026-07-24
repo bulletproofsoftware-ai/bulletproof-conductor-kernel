@@ -1,0 +1,111 @@
+# Authentication Configuration — Per-caller auth methods and rate limits
+# Used by conductor-agent-gateway for request authentication and authorization
+
+version: "1.0"
+description: "Authentication methods, trust levels, and rate limits for external agent callers"
+
+caller_types:
+  local:
+    description: "Local operator via conductor"
+    auth_method: none
+    trust_level: 5
+    # DEPLOYMENT: Gateway MUST bind to 127.0.0.1 only. IP allowlist enforced at network layer (iptables/firewall), not just application.
+    rate_limit:
+      requests_per_hour: -1  # -1 means unlimited
+    ip_allowlist: ["127.0.0.1", "::1"]
+    allowed_agents: all
+
+  remote_instance:
+    description: "Remote Claude Code instance (operator-configured)"
+    auth_method: api_key
+    auth_header: "X-API-Key"
+    key_env_var: "GATEWAY_REMOTE_API_KEY"
+    trust_level: 4
+    rate_limit:
+      requests_per_hour: 100
+      burst: 10
+    ip_allowlist: ["${REMOTE_ALLOWED_IP}"]
+    allowed_agents: all_external
+
+  telegram_bot:
+    description: "Telegram bot integration"
+    auth_method: api_key
+    auth_header: "X-API-Key"
+    key_env_var: "GATEWAY_TELEGRAM_API_KEY"
+    trust_level: 3
+    rate_limit:
+      requests_per_hour: 20
+      burst: 5
+    ip_allowlist: []
+    # ACCEPTED RISK: No IP restriction for telegram_bot. Compensating control: API key required, rate-limited to 20/hour.
+    allowed_agents:
+      - conductor-research
+      - conductor-advisor
+      - conductor-ciso
+      - conductor-doc-gen
+
+  n8n_workflows:
+    description: "n8n workflow automation triggers"
+    auth_method: service_secret
+    auth_header: "X-Service-Secret"
+    key_env_var: "GATEWAY_N8N_SERVICE_SECRET"
+    trust_level: 3
+    rate_limit:
+      requests_per_hour: 50
+      burst: 10
+    ip_allowlist: ["127.0.0.1"]
+    allowed_agents: all_external
+
+  external_a2a:
+    description: "External A2A protocol agents"
+    auth_method: oauth2_client_credentials
+    # Variable resolution: ${VAR} patterns are resolved by the gateway startup loader.
+    # Unresolved patterns are caught by config validation on startup.
+    token_url: "${GATEWAY_OAUTH2_TOKEN_URL}"
+    client_id_env: "GATEWAY_A2A_CLIENT_ID"
+    client_secret_env: "GATEWAY_A2A_CLIENT_SECRET"
+    trust_level: 2
+    rate_limit:
+      requests_per_hour: 10
+      burst: 3
+      configurable_per_client: true
+    ip_allowlist: []
+    allowed_agents: all_external
+    require_capability_negotiation: true
+
+  unknown:
+    description: "Unrecognized callers"
+    auth_method: denied
+    trust_level: 0
+    rate_limit:
+      requests_per_hour: 0
+    action: "Return 401 Unauthorized"
+
+# Rate limiting configuration
+rate_limiting:
+  algorithm: "sliding_window"
+  window_seconds: 3600
+  storage: "in_memory"
+  # Single-instance only. For horizontal scaling, switch to Redis-backed rate limiting.
+  headers:
+    remaining: "X-RateLimit-Remaining"
+    limit: "X-RateLimit-Limit"
+    reset: "X-RateLimit-Reset"
+  on_exceeded:
+    status_code: 429
+    body:
+      error: "rate_limit_exceeded"
+      message: "Rate limit exceeded. Try again in {retry_after} seconds."
+      retry_after: "{seconds_until_reset}"
+    emit_event: "external.rate_limited"
+
+# Security settings
+security:
+  api_key_min_length: 32
+  api_key_hash_algorithm: "sha256"
+  # SHA-256 acceptable for high-entropy API keys (32+ chars). For lower-entropy secrets, use bcrypt.
+  token_expiry_seconds: 3600
+  require_https: true
+  cors_origins: []
+  max_request_body_bytes: 5242880  # 5MB — accommodates multi-artifact context envelopes
+  request_timeout_seconds: 300

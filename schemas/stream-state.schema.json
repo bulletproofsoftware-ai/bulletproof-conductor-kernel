@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.conductor-kernel.example/stream-state.schema.json",
+  "title": "Conductor Kernel Stream State",
+  "description": "Base schema for stream-mode (continuous, event-driven) kernel state. Stream state is stored long-horizon in Qdrant keyed by stream_id per REQ-KER-012, and a thin pointer file may sit in the working directory. Domain plugins extend via domain_extensions per REQ-KER-003.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "domain",
+    "stream_id",
+    "subscriptions"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "default": "3.0",
+      "enum": ["3.0", "3.0.0"],
+      "description": "Kernel publishes stream-state schema at 3.0 alongside workflow-state.schema.json."
+    },
+    "domain": {
+      "type": "string",
+      "description": "Domain plugin identifier (e.g., 'soc', 'dev'). Selects schema extension and policy bindings."
+    },
+    "stream_id": {
+      "type": "string",
+      "description": "Stream identifier. Equal to the n8n workflow_id per REQ-KER-010. Stable across kernel restarts.",
+      "minLength": 1
+    },
+    "stream_name": {
+      "type": "string",
+      "description": "Human-readable stream name for logs and dashboards."
+    },
+    "n8n_workflow_id": {
+      "type": "string",
+      "description": "Explicit n8n workflow id. Redundant with stream_id but recorded for clarity in cross-system traces.",
+      "minLength": 1
+    },
+    "n8n_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL of the n8n instance hosting this stream. Default http://localhost:5679."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "parent_stream_id": {
+      "type": ["string", "null"],
+      "description": "If this stream was spawned from another stream via kernel.stream.spawn_workflow, the parent stream's id. Null for root streams."
+    },
+    "subscriptions": {
+      "type": "array",
+      "description": "Event sources this stream is subscribed to. Used by kernel.stream.init to wire up n8n triggers.",
+      "items": {
+        "type": "object",
+        "required": ["source", "kind", "authentication"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Source identifier — e.g., 'edr.alerts', 'idp.events', 'cron.daily-2am', 'webhook./ingest'."
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["webhook", "cron", "n8n_trigger", "event_bus", "polling"],
+            "description": "Trigger kind."
+          },
+          "schedule": {
+            "type": "string",
+            "description": "Cron expression or polling interval (for kind=cron or kind=polling)."
+          },
+          "event_schema_ref": {
+            "type": "string",
+            "description": "Path or URI to the JSON Schema for events from this source. Used by REQ-XCT-007 boundary validation."
+          },
+          "filter": {
+            "type": "object",
+            "description": "Per-source filter expression (e.g., severity >= high). Free-form."
+          },
+          "authentication": {
+            "type": "object",
+            "description": "Required per RC-4 / F-10. kernel.stream.handle_event MUST verify authentication BEFORE schema validation. Auth failure → audit event stream.event_auth_failure, drop to DLQ, no agent dispatch. Webhook URL secrecy is NOT considered authentication.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["hmac", "mtls", "oauth_jwt", "shared_secret", "none"],
+                "description": "Authentication mechanism. 'none' is permitted only when stream.init emits an explicit warning audit event (stream.init.auth_none_warning) recording operator-acknowledged risk."
+              },
+              "secret_ref": {
+                "type": ["string", "null"],
+                "format": "uri",
+                "description": "URI to the secret material (e.g., 'vault://path/to/secret', 'env://SECRET_NAME', 'file:///etc/secrets/...'). NEVER inline. Required when kind != 'none'."
+              },
+              "verification_field": {
+                "type": ["string", "null"],
+                "description": "Where on the inbound request the verification material is located, e.g., 'header.X-Signature', 'body.signature', 'header.Authorization'. Required when kind != 'none'."
+              },
+              "algorithm": {
+                "type": ["string", "null"],
+                "description": "Cryptographic algorithm where applicable (e.g., 'hmac-sha256', 'rs256' for oauth_jwt). Implementation default is 'hmac-sha256' for kind='hmac'."
+              },
+              "audit_warning_acknowledged": {
+                "type": "boolean",
+                "default": false,
+                "description": "When kind='none', operator must set true to acknowledge the audit warning. Otherwise stream.init returns KER-SI-005 stream_auth_none_unacknowledged."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "last_event_id": {
+      "type": ["string", "null"],
+      "description": "Most recent event id handled. Used for resume semantics and deduplication."
+    },
+    "last_event_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "running_counters": {
+      "type": "object",
+      "description": "Counters that increment over the life of the stream.",
+      "properties": {
+        "events_received": { "type": "integer", "minimum": 0, "default": 0 },
+        "events_processed": { "type": "integer", "minimum": 0, "default": 0 },
+        "events_dropped": { "type": "integer", "minimum": 0, "default": 0 },
+        "events_dead_letter": { "type": "integer", "minimum": 0, "default": 0 },
+        "spawns_emitted": { "type": "integer", "minimum": 0, "default": 0 },
+        "errors_total": { "type": "integer", "minimum": 0, "default": 0 }
+      },
+      "additionalProperties": true
+    },
+    "health_metrics": {
+      "type": "object",
+      "description": "Health metrics returned by kernel.stream.health per REQ-KER-013. Sourced from n8n_list_executions + audit emissions. Populated on read, not stored persistently — schema declared so consumers know the shape.",
+      "properties": {
+        "success_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "avg_latency_ms": { "type": "number", "minimum": 0 },
+        "p99_latency_ms": { "type": "number", "minimum": 0 },
+        "error_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "throughput_per_min": { "type": "number", "minimum": 0 },
+        "dlq_depth": { "type": "integer", "minimum": 0 },
+        "sla_status": {
+          "type": "string",
+          "enum": ["healthy", "degraded", "breach", "unknown"]
+        },
+        "measured_at": { "type": "string", "format": "date-time" },
+        "window_seconds": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "spawned_workflow_ids": {
+      "type": "array",
+      "description": "Workflow-mode tasks spawned by this stream via kernel.stream.spawn_workflow per REQ-KER-014. Each entry is a state-file path or a workflow id depending on domain.",
+      "items": {
+        "type": "object",
+        "required": ["workflow_id", "spawned_at"],
+        "properties": {
+          "workflow_id": { "type": "string" },
+          "state_file_path": { "type": "string" },
+          "trigger_event_id": { "type": "string" },
+          "spawned_at": { "type": "string", "format": "date-time" },
+          "outcome": {
+            "type": ["string", "null"],
+            "enum": ["success", "failure", "pending", null]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "pause_state": {
+      "type": "object",
+      "description": "Pause/resume state per REQ-KER-012. Stream pauses via kernel.stream.pause; resumes via kernel.stream.resume.",
+      "properties": {
+        "paused": { "type": "boolean", "default": false },
+        "paused_at": { "type": "string", "format": "date-time" },
+        "paused_by": { "type": "string", "description": "Identifier of who/what paused — operator id, agent name, or system." },
+        "reason": { "type": "string" },
+        "resume_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Scheduled resume time, or null for indefinite pause."
+        }
+      },
+      "additionalProperties": false
+    },
+    "consumed_offsets": {
+      "type": "object",
+      "description": "Per-source offset cursors for resumable consumption. Free-form because offset shape is source-specific (n8n execution id, Qdrant point id, log index, etc.).",
+      "additionalProperties": true
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Static configuration for this stream — backoff policy, batch size, concurrency, retention. Free-form because policy is per-domain.",
+      "additionalProperties": true
+    },
+    "audit_session_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Long-lived audit session id used by kernel.audit_emit for all events from this stream."
+    },
+    "domain_extensions": {
+      "type": "object",
+      "description": "Extension point per REQ-KER-003. Domain plugins write arbitrary structure here. Kernel never reads or writes these fields. Example for CLUE alert-router stream: {alert_dedup_window_s, alert_severity_floor, mitre_coverage_targets, edr_provider}.",
+      "default": {}
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,112 @@
+{
+  "$schema_note": "Local snapshot of the agentskills.io open specification used by skill-publish.sh + agentskills-validator.sh. Regenerate by re-running the firecrawl-scrape of https://agentskills.io/specification — see snapshot_provenance below.",
+  "spec_version": "1.0.0",
+  "snapshot_source_url": "https://agentskills.io/specification",
+  "snapshot_date": "2026-05-20",
+  "snapshot_fetched_via": "firecrawl scrape (CLI v1.15.2) --only-main-content",
+  "snapshot_provenance": {
+    "operator_command": "firecrawl scrape \"https://agentskills.io/specification\" --only-main-content -o /tmp/agentskills-fetch/spec.md",
+    "scrape_id": "019e4614-6cba-720f-82d3-a95a620ad423",
+    "raw_lines": 302,
+    "regeneration_steps": [
+      "Re-run the operator_command above (it overwrites /tmp/agentskills-fetch/spec.md)",
+      "Update snapshot_date and snapshot_fetched_via",
+      "Re-read the Frontmatter table; if any field's Required/Constraints column changed, update frontmatter_schema below",
+      "Update spec_version (semver bump) if any breaking change in required fields"
+    ]
+  },
+  "staleness_warning_after_days": 30,
+  "frontmatter_schema": {
+    "fields": {
+      "name": {
+        "required": true,
+        "constraints": {
+          "min_length": 1,
+          "max_length": 64,
+          "regex": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "regex_description": "Lowercase alphanumeric + hyphens. No leading/trailing/consecutive hyphens.",
+          "must_match_parent_directory": true
+        }
+      },
+      "description": {
+        "required": true,
+        "constraints": {
+          "min_length": 1,
+          "max_length": 1024,
+          "should_describe": "Both what the skill does and when to use it (trigger keywords)"
+        }
+      },
+      "license": {
+        "required": false,
+        "constraints": {
+          "description": "License name or reference to a bundled license file"
+        }
+      },
+      "compatibility": {
+        "required": false,
+        "constraints": {
+          "min_length": 1,
+          "max_length": 500,
+          "description": "Environment requirements (intended product, system packages, network access, etc.)"
+        }
+      },
+      "metadata": {
+        "required": false,
+        "constraints": {
+          "type": "object",
+          "description": "Arbitrary key-value mapping for additional metadata not defined by the Agent Skills spec",
+          "recommended_keys_for_conductor_ecosystem": {
+            "agentskills_compatible": {
+              "type": "boolean",
+              "purpose": "Declares the skill is intended to comply with the agentskills.io open spec. Used by build-skill-index.sh to set the agentskills_compatible field at index time."
+            },
+            "version": {
+              "type": "string",
+              "purpose": "Semver version of the skill itself (independent of any plugin version).",
+              "format": "semver (e.g., 1.0.0)"
+            },
+            "category": {
+              "type": "string",
+              "purpose": "High-level category used by the progressive-disclosure index.",
+              "suggested_values": ["web", "devops", "security", "research", "frontend", "testing", "governance", "infrastructure", "documentation", "communication", "misc"]
+            },
+            "tags": {
+              "type": "array<string>",
+              "purpose": "Searchable tags for discovery via skill index."
+            },
+            "platforms": {
+              "type": "array<string>",
+              "purpose": "OS scope. Defaults to [macos, linux] at index time.",
+              "suggested_values": ["macos", "linux", "windows"]
+            }
+          }
+        }
+      },
+      "allowed-tools": {
+        "required": false,
+        "experimental": true,
+        "constraints": {
+          "type": "string",
+          "description": "Space-separated string of tools pre-approved to run. Support varies between agent implementations."
+        }
+      }
+    },
+    "forbidden_prefix": "_private_",
+    "forbidden_prefix_description": "Vendor-extension namespace check. Any top-level frontmatter key starting with _private_ is rejected by the validator. Use metadata.* for vendor-specific extensions instead."
+  },
+  "progressive_disclosure": {
+    "tier_1_metadata_tokens_max": 100,
+    "tier_2_skill_md_body_tokens_recommended_max": 5000,
+    "tier_2_skill_md_lines_recommended_max": 500,
+    "tier_3_references_loaded_on_demand": true
+  },
+  "directory_structure": {
+    "required_files": ["SKILL.md"],
+    "optional_directories": ["scripts/", "references/", "assets/"]
+  },
+  "publishing": {
+    "official_validator_repo": "https://github.com/agentskills/agentskills/tree/main/skills-ref",
+    "validation_command": "skills-ref validate ./my-skill",
+    "conductor_kernel_validator": "conductor-kernel/scripts/lib/agentskills-validator.sh"
+  }
+}

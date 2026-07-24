@@ -1,0 +1,144 @@
+# Context Envelope — Standard format for cross-platform agent state sharing
+# Used by conductor-agent-gateway for inter-agent context transfer
+
+version: "1.0"
+description: "Context sharing protocol for agents on different platforms"
+
+envelope_schema:
+  type: object
+  required: ["protocol_version", "source_agent", "context", "governance"]
+  properties:
+    protocol_version:
+      type: string
+      enum: ["1.0"]
+      description: "Protocol version for compatibility"
+
+    source_agent:
+      type: string
+      description: "Fully qualified agent ID (e.g., conductor.architect)"
+
+    target_agent:
+      type: string
+      description: "Intended recipient agent ID (optional for broadcast)"
+
+    context:
+      type: object
+      required: ["project"]
+      properties:
+        project:
+          type: string
+          description: "Project name or identifier"
+        phase:
+          type: string
+          description: "Current workflow phase"
+        artifacts:
+          type: array
+          description: "Shared artifacts with provenance"
+          items:
+            type: object
+            required: ["type", "format", "content", "provenance"]
+            properties:
+              type:
+                type: string
+                enum: ["specification", "code", "test", "report", "review", "data"]
+              format:
+                type: string
+                enum: ["markdown", "json", "yaml", "python", "typescript", "plain"]
+              content:
+                type: string
+                maxLength: 100000
+                description: "Artifact content (max 100KB)"
+                # 100KB limit per artifact. For larger artifacts, use reference-by-hash pattern:
+                # content_ref: { hash: sha256:..., location: qdrant|filesystem }
+              provenance:
+                type: string
+                description: "Who created this and when (agent @ ISO-8601)"
+              hash:
+                type: string
+                description: "SHA-256 of content for integrity verification"
+        constraints:
+          type: array
+          items: { type: string }
+          description: "Constraints the target agent must respect"
+        history_summary:
+          type: string
+          description: "Brief context about what's happened so far"
+
+    governance:
+      type: object
+      required: ["data_classification", "audit_id"]
+      properties:
+        data_classification:
+          type: string
+          enum: ["T0-Public", "T1-Internal", "T2-Confidential", "T3-Restricted"]
+          description: "Data classification tier — recipient must respect this"
+        audit_id:
+          type: string
+          description: "Governance audit trail ID for traceability"
+        max_autonomy:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: "Maximum autonomy level for the target agent"
+        consent_chain:
+          type: array
+          items: { type: string }
+          description: "Chain of approvals for this context transfer"
+
+    metadata:
+      type: object
+      properties:
+        correlation_id:
+          type: string
+          description: "Request correlation ID for tracing"
+        timestamp:
+          type: string
+          format: date-time
+        ttl_seconds:
+          type: integer
+          description: "Time-to-live for this context (expires after)"
+          default: 3600
+
+# Classification enforcement rules
+classification_rules:
+  T0-Public:
+    allowed_recipients: "any"
+    logging: "standard"
+    encryption: "optional"
+
+  T1-Internal:
+    allowed_recipients: "authenticated callers only"
+    logging: "standard"
+    encryption: "required in transit"
+
+  T2-Confidential:
+    allowed_recipients: "trust_level >= 3 only"
+    logging: "detailed with content hash"
+    encryption: "required in transit and at rest"
+    requires_consent: true
+
+  T3-Restricted:
+    allowed_recipients: "trust_level >= 4 AND explicit consent"
+    logging: "detailed with full audit"
+    encryption: "required with key management"
+    requires_consent: true
+    requires_dual_auth: true
+    dual_auth:
+      challenge_method: approval_token
+      approvers_required: 2
+      approval_ttl_seconds: 300
+      flow: "Requester submits context → Gateway requests approval from 2 registered approvers → Approvers respond with signed tokens → Gateway validates tokens and forwards"
+
+# Validation rules
+validation:
+  on_receive:
+    - "Verify protocol_version is supported"
+    - "Verify governance.data_classification is present"
+    - "Verify caller trust_level meets classification requirement"
+    - "Verify artifact content hashes if provided"
+    - "Reject if classification rules not met"
+  on_send:
+    - "Set provenance on all artifacts"
+    - "Compute content hashes"
+    - "Set governance metadata from current session"
+    - "Log context transfer to audit bus"

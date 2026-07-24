@@ -1,0 +1,309 @@
+# Retry and Escalation Policy Schema
+# Defines retry behavior, escalation paths, and dead letter queue configuration
+# Used by conductor for unified failure handling
+
+version: "1.0"
+description: "Unified retry and escalation policies for conductor orchestration"
+
+# Retry Policies by Failure Type
+retry_policies:
+  default:
+    max_attempts: 3
+    backoff_type: exponential
+    initial_delay_seconds: 5
+    max_delay_seconds: 300
+    backoff_multiplier: 2.0
+    retry_on:
+      - timeout
+      - transient_error
+      - rate_limit
+    no_retry_on:
+      - validation_failed
+      - capability_mismatch
+      - user_cancelled
+
+  critic_rejection:
+    description: "Policy for when critic agent rejects a deliverable (blocking mode only; advisory mode logs and continues)"
+    max_attempts: 3
+    backoff_type: linear
+    initial_delay_seconds: 0  # Immediate retry with fixes
+    escalate_after: 3
+    escalation_path: user_intervention
+    checkpoint_before_retry: true
+    retry_actions:
+      attempt_1: "Apply specific fixes from critic feedback"
+      attempt_2: "Refactor approach based on gap analysis"
+      attempt_3: "Escalate to user with full context"
+
+  agent_failure:
+    description: "Policy for when an agent fails to complete task (builder split-back counts as controlled failure, not retry)"
+    max_attempts: 2
+    backoff_type: exponential
+    initial_delay_seconds: 10
+    checkpoint_before_retry: true
+    retry_actions:
+      attempt_1: "Retry same agent with additional context"
+      attempt_2: "Try alternative agent if available (builder: try split plan/implement)"
+    escalate_after: 2
+    escalation_path: dead_letter_queue
+
+  validation_failure:
+    description: "Policy for schema/state validation failures"
+    max_attempts: 1
+    backoff_type: none
+    checkpoint_before_retry: false
+    retry_actions:
+      attempt_1: "Attempt state recovery from backup"
+    escalate_after: 1
+    escalation_path: halt_with_notification
+
+  integration_failure:
+    description: "Policy for external service/tool integration failures"
+    max_attempts: 5
+    backoff_type: exponential
+    initial_delay_seconds: 2
+    max_delay_seconds: 120
+    backoff_multiplier: 2.0
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 5
+      reset_timeout_seconds: 300
+    retry_on:
+      - connection_error
+      - timeout
+      - rate_limit
+      - 5xx_error
+    no_retry_on:
+      - 4xx_error
+      - authentication_failed
+      - not_found
+
+  git_operation_failure:
+    description: "Policy for git operation failures"
+    max_attempts: 2
+    backoff_type: linear
+    initial_delay_seconds: 5
+    checkpoint_before_retry: true
+    retry_actions:
+      attempt_1: "Restore from pre-git checkpoint, retry"
+      attempt_2: "Clean working tree, retry from clean state"
+    escalate_after: 2
+    escalation_path: user_intervention
+
+# Escalation Paths
+escalation_paths:
+  default:
+    steps:
+      - action: notify_user
+        message_template: "Task failed after {attempts} attempts: {failure_reason}"
+        channel: console
+      - action: create_blocked_task
+        include_context: true
+        include_attempts_log: true
+      - action: halt
+        save_state: true
+    timeout_minutes: 5
+
+  security_issue:
+    description: "Escalation for security-related failures"
+    severity: critical
+    steps:
+      - action: log_security_event
+        include_stack_trace: true
+        include_artifacts: false  # Don't log potentially sensitive data
+      - action: notify_immediately
+        message_template: "SECURITY: {failure_type} detected in {agent}"
+        channel: console
+        priority: high
+      - action: halt
+        save_state: true
+        block_resume: true  # Require explicit security review before resume
+    timeout_minutes: 0  # Immediate
+
+  critical_failure:
+    description: "Escalation for critical system failures"
+    severity: critical
+    steps:
+      - action: checkpoint
+        forced: true
+        include_diagnostics: true
+      - action: generate_incident_report
+        include_logs: true
+        include_state_dump: true
+        output_path: "incidents/incident_{timestamp}.md"
+      - action: halt
+        save_state: true
+    timeout_minutes: 1
+
+  user_intervention:
+    description: "Escalation requiring user decision"
+    severity: medium
+    steps:
+      - action: notify_user
+        message_template: |
+          Task requires your decision:
+          Agent: {agent}
+          Task: {task_name}
+          Attempts: {attempts}
+          Last Error: {last_error}
+
+          Options:
+          1. Retry with modifications
+          2. Skip this task
+          3. Abort workflow
+        channel: console
+        wait_for_response: true
+      - action: await_user_input
+        timeout_minutes: 30
+        default_action: halt
+
+  dead_letter_queue:
+    description: "Move to DLQ for later processing"
+    severity: low
+    steps:
+      - action: move_to_dlq
+        include_context: true
+        include_attempts_log: true
+      - action: notify_user
+        message_template: "Task moved to dead letter queue: {task_name}"
+        channel: console
+      - action: continue_workflow
+        # skip_failed_task is tier-dependent:
+        #   MAJOR:    false — failed tasks MUST be resolved or escalated to user
+        #   STANDARD: false for blocking gates (PostToolUse hook enforces), true for advisory
+        #   MINOR:    true — advisory only, workflow continues
+        #   TRIVIAL:  true — advisory only, workflow continues
+        skip_failed_task_by_tier:
+          MAJOR: false
+          STANDARD: false  # blocking gates enforced by PostToolUse hook
+          MINOR: true
+          TRIVIAL: true
+        skip_failed_task: false  # default for backward compatibility (safest default)
+
+# Dead Letter Queue Configuration
+dead_letter_queue:
+  storage: conductor-state.json/failed_tasks
+  retention_days: 30
+  max_items: 100
+  cleanup_policy: fifo  # First in, first out when max reached
+
+  entry_schema:
+    required_fields:
+      - step
+      - name
+      - agent
+      - failure_type
+      - failed_at
+      - retry_count
+      - last_error
+    optional_fields:
+      - partial_progress
+      - artifacts_created
+      - checkpoint_id
+      - escalation_status
+
+  processing:
+    auto_retry_enabled: false
+    manual_review_required: true
+    notification_on_add: true
+    notification_on_threshold:
+      enabled: true
+      threshold: 5
+      message: "DLQ has {count} failed tasks awaiting review"
+
+# Circuit Breaker Configuration
+circuit_breaker:
+  global_settings:
+    enabled: true
+    default_failure_threshold: 5
+    default_reset_timeout_seconds: 300
+
+  states:
+    closed:
+      description: "Normal operation, requests flow through"
+      transition_to_open: "failure_count >= failure_threshold"
+
+    open:
+      description: "Failing, reject requests immediately"
+      transition_to_half_open: "time_since_last_failure >= reset_timeout"
+      action_on_request: "Return cached response or error immediately"
+
+    half_open:
+      description: "Testing if service recovered"
+      allowed_requests: 1
+      transition_to_closed: "request_succeeds"
+      transition_to_open: "request_fails"
+
+  per_integration:
+    external_apis:
+      failure_threshold: 3
+      reset_timeout_seconds: 180
+    databases:
+      failure_threshold: 2
+      reset_timeout_seconds: 60
+    llm_calls:
+      failure_threshold: 5
+      reset_timeout_seconds: 120
+
+# Retry Decision Matrix
+retry_decision_matrix:
+  # Format: failure_type -> policy_name
+  deliverable_missing: agent_failure
+  quality_failure: critic_rejection
+  timeout: default
+  error: default
+  validation_failed: validation_failure
+  dependency_failed: agent_failure
+  agent_error: agent_failure
+  security_violation: security_issue
+  state_corruption: critical_failure
+  git_conflict: git_operation_failure
+  integration_error: integration_failure
+  rate_limited: integration_failure
+  authentication_failed: user_intervention
+
+# Pre-Retry Checklist
+pre_retry_checklist:
+  mandatory:
+    - checkpoint_current_state: true
+    - calculate_backoff_delay: true
+    - check_retry_budget: true
+    - log_retry_attempt: true
+
+  conditional:
+    - restore_from_checkpoint:
+        when: "checkpoint_before_retry == true"
+    - apply_remediation:
+        when: "retry_actions defined"
+    - check_circuit_breaker:
+        when: "integration failure"
+
+  blocking:
+    - circuit_breaker_open: "Cannot retry while circuit breaker is open"
+    - max_attempts_exceeded: "Retry budget exhausted"
+    - no_retry_policy: "This failure type is not retryable"
+
+# Failure Logging
+failure_logging:
+  log_format:
+    timestamp: "ISO-8601"
+    level: "error|warning|info"
+    agent: "agent_name"
+    task: "task_description"
+    attempt: "current_attempt/max_attempts"
+    failure_type: "failure_category"
+    error_message: "detailed_error"
+    stack_trace: "if_available"
+    context: "relevant_context"
+
+  retention:
+    success_logs: 7  # days
+    failure_logs: 30  # days
+    security_logs: 365  # days
+
+  aggregation:
+    enabled: true
+    window_minutes: 60
+    alert_on_threshold:
+      failures_per_hour: 10
+      same_failure_count: 3

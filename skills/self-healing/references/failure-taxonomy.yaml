@@ -1,0 +1,180 @@
+# Failure Taxonomy — Pattern matching rules for failure classification
+# Used by conductor-recovery-engine to categorize errors
+# Patterns are evaluated in order; first match wins within each category
+
+version: "1.0"
+description: "Failure classification patterns using error codes, messages, and timing signals"
+
+categories:
+  transient:
+    description: "Temporary failures that typically resolve on retry"
+    patterns:
+      # Pattern matching uses substring contains for initial classification.
+      # For production robustness, add regex alternatives where available.
+      # Provider-side phrasing changes may require pattern updates.
+      - match: "status_code"
+        values: [429, 503, 502, 504]
+        confidence: 0.95
+      - match: "error_message"
+        contains: ["rate limit", "too many requests", "temporarily unavailable", "service unavailable"]
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["timeout", "timed out", "deadline exceeded", "ETIMEDOUT"]
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["connection reset", "ECONNRESET", "ECONNREFUSED", "EPIPE"]
+        confidence: 0.80
+      - match: "error_message"
+        contains: ["retry after", "retry-after", "backoff"]
+        confidence: 0.95
+    timing_signals:
+      - condition: "duration_ms > 25000"
+        boost_confidence: 0.10
+        note: "Long duration suggests timeout, not immediate rejection"
+
+  model:
+    description: "LLM-specific failures requiring model or context changes"
+    patterns:
+      - match: "error_message"
+        contains: ["context length exceeded", "context_length_exceeded", "maximum context length"]
+        sub_type: "context_overflow"
+        confidence: 0.95
+      - match: "error_message"
+        contains: ["token limit", "max_tokens", "output length"]
+        sub_type: "token_limit_exceeded"
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["content policy", "safety filter", "I cannot", "I'm unable to", "I can't", "I won't", "I'm not able to", "As an AI"]
+        sub_type: "refusal"
+        confidence: 0.70
+      - match: "output_validation"
+        condition: "output_format_invalid"
+        sub_type: "hallucination"
+        confidence: 0.80
+      - match: "output_validation"
+        condition: "contradicts_input"
+        sub_type: "hallucination"
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["overloaded", "capacity", "anthropic.*overloaded"]
+        sub_type: "provider_overload"
+        confidence: 0.85
+
+  data:
+    description: "Input data issues requiring refresh or skip"
+    patterns:
+      - match: "error_message"
+        contains: ["validation failed", "schema mismatch", "invalid input"]
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["missing required", "not found", "no such file", "ENOENT"]
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["empty result", "no data", "null response"]
+        confidence: 0.80
+      - match: "error_message"
+        contains: ["parse error", "JSON parse", "YAML parse", "malformed"]
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["encoding error", "unicode", "utf-8", "charset"]
+        confidence: 0.80
+
+  permission:
+    description: "Authorization failures requiring operator intervention"
+    patterns:
+      - match: "status_code"
+        values: [401, 403]
+        confidence: 0.95
+      - match: "error_message"
+        contains: ["unauthorized", "forbidden", "access denied", "permission denied"]
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["expired token", "invalid token", "authentication failed"]
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["tool blocked", "tool_blocked", "governance gate"]
+        confidence: 0.95
+      - match: "error_message"
+        contains: ["API key", "api_key", "credential"]
+        confidence: 0.85
+
+  # NOTE: Reclassification logic below is evaluated by conductor-recovery-engine.
+  # This taxonomy is the declarative source; the engine implements the transitions.
+  logic:
+    description: "Programming or reasoning errors requiring manual fix"
+    patterns:
+      - match: "error_message"
+        contains: ["assertion failed", "AssertionError", "invariant violated"]
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["infinite loop", "recursion limit", "maximum recursion"]
+        confidence: 0.95
+      - match: "error_message"
+        contains: ["contradictory", "conflicting", "inconsistent state"]
+        confidence: 0.80
+      - match: "error_message"
+        contains: ["stack overflow", "out of memory", "OOMKilled"]
+        confidence: 0.85
+    timing_signals:
+      - condition: "retry_count >= 3 AND same_error"
+        reclassify_from: "transient"
+        confidence: 0.85
+        note: "Repeated identical failures suggest logic error, not transient"
+        # 'same_error' means: identical error_code AND identical failure_category.
+        # Timestamp differences in messages are ignored for comparison.
+
+  infrastructure:
+    description: "Service/platform failures requiring wait or workaround"
+    patterns:
+      - match: "error_message"
+        contains: ["container", "docker", "unhealthy", "exited"]
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["disk full", "no space", "ENOSPC"]
+        confidence: 0.95
+      - match: "error_message"
+        contains: ["network partition", "unreachable", "ENETUNREACH"]
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["ENOMEM", "cannot allocate", "memory"]
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["port already in use", "EADDRINUSE", "bind failed"]
+        confidence: 0.90
+
+  external:
+    description: "Third-party service failures"
+    patterns:
+      - match: "status_code"
+        values: [500, 501, 520, 521, 522, 523, 524]
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["webhook failed", "webhook timeout", "callback error"]
+        confidence: 0.85
+      - match: "error_message"
+        contains: ["DNS resolution", "ENOTFOUND", "getaddrinfo"]
+        confidence: 0.90
+      - match: "error_message"
+        contains: ["SSL", "TLS", "certificate", "CERT_"]
+        confidence: 0.80
+      - match: "error_message"
+        contains: ["GitHub API", "Gemini", "n8n"]
+        confidence: 0.80
+
+# Classification tiebreaker rules
+tiebreaker:
+  - rule: "If multiple categories match, prefer highest confidence"
+  - rule: "If confidence is equal, prefer more specific pattern"
+  - rule: "If still tied, use timing signal as tiebreaker"
+  - rule: "If no pattern matches, classify as 'unclassified' with confidence 0.5"
+    # Unclassified failures escalate (confidence 0.5 < 0.70 threshold) but
+    # do not pollute MTTR metrics for genuine external failures.
+  - rule: "If confidence < 0.7 after all rules, default to 'escalate' strategy"
+
+# Pattern match scoring
+scoring:
+  exact_match_bonus: 0.10
+  multiple_pattern_bonus: 0.05
+  timing_signal_bonus: 0.10
+  max_confidence: 1.0
+  min_confidence_for_auto_recovery: 0.70

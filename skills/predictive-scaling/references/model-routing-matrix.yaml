@@ -1,0 +1,106 @@
+# Model Routing Matrix — Adaptive routing decisions for predictive scaling
+# Extends Agent Economics (PRD 10) with predictive pre-selection
+
+version: "1.0"
+description: "Decision matrix for adaptive model tier selection based on predictions and context"
+
+# Base routing by conductor tier
+base_routing:
+  TRIVIAL:
+    default_model: haiku
+    upgrade_on: ["validation_failure", "operator_request"]
+  MINOR:
+    default_model: sonnet
+    upgrade_on: ["complex_task_detected", "security_review", "operator_request"]
+    downgrade_on: ["simple_documentation", "code_formatting"]
+  STANDARD:
+    default_model: sonnet
+    upgrade_on: ["architecture_phase", "security_review", "critical_path"]
+    opus_required: ["pentest", "ciso_review", "adversarial_review"]
+  MAJOR:
+    default_model: opus
+    downgrade_on: ["documentation", "simple_tests", "formatting"]
+
+# Predictive overrides (applied on top of base routing)
+predictive_overrides:
+  - signal: "predicted_major_session"
+    condition: "session_prediction.predicted_tier == MAJOR"
+    action: "Pre-select opus for next 3 dispatches"
+    override_model: opus
+    duration: "next_3_dispatches"
+
+  - signal: "predicted_trivial_session"
+    condition: "session_prediction.predicted_tier == TRIVIAL"
+    action: "Default to haiku, upgrade on demand"
+    override_model: haiku
+    duration: "until_next_prediction"
+
+  - signal: "budget_pressure"
+    condition: "cost_forecast.status == 'at_risk' OR (spent/budget > 0.7 AND remaining_tasks/total_tasks > 0.4)"
+    action: "Downgrade all non-critical to sonnet"
+    override_model: sonnet
+    exclude: ["ciso_review", "pentest", "adversarial_review"]
+
+  - signal: "cache_cold"
+    condition: "time_since_last_session > 8 hours"
+    action: "Route first queries to smaller context windows"
+    context_limit: 50000
+    duration: "first_3_dispatches"
+
+  # Override precedence: high_rework > budget_pressure > session_complexity.
+  # When budget_pressure and high_rework conflict, high_rework wins.
+  - signal: "high_rework"
+    condition: "outcome_metrics.rework_frequency > 2.0 for current project"
+    action: "Upgrade tier for remaining dispatches"
+    upgrade_by: 1
+    note: "Haiku→Sonnet, Sonnet→Opus"
+
+  - signal: "cost_budget_exceeded"
+    condition: "cost_tracking.budget_exceeded == true"
+    action: "Downgrade all to haiku except critical path"
+    override_model: haiku
+    exclude: ["security_review", "critical_implementation"]
+
+  - signal: "security_no_downgrade"
+    condition: "task_type in [security_review, ciso_review, pentest]"
+    action: "minimum_model = opus"
+    reason: "Security tasks require highest reasoning capability — no downgrade permitted"
+
+# Agent-specific model preferences
+agent_model_preferences:
+  conductor-architect: { preferred: opus, minimum: sonnet }
+  conductor-builder: { preferred: sonnet, minimum: haiku }
+  conductor-ciso: { preferred: opus, minimum: opus }
+  conductor-qa: { preferred: sonnet, minimum: haiku }
+  conductor-critic: { preferred: sonnet, minimum: haiku }
+  conductor-research: { preferred: opus, minimum: sonnet }
+  conductor-doc-gen: { preferred: haiku, minimum: haiku }
+  conductor-checkpoint: { preferred: haiku, minimum: haiku }
+  conductor-recovery-engine: { preferred: sonnet, minimum: haiku }
+  conductor-event-router: { preferred: haiku, minimum: haiku }
+  conductor-outcome-collector: { preferred: haiku, minimum: haiku }
+  conductor-prediction-engine: { preferred: haiku, minimum: haiku }
+  conductor-gemini-validator: { preferred: sonnet, minimum: sonnet }
+
+# Cost rates — canonical source: commands/conduct.md lines 152-157
+# Duplicated here for routing calculations. Keep in sync.
+cost_rates:
+  opus:
+    input: 15.00
+    output: 75.00
+  sonnet:
+    input: 3.00
+    output: 15.00
+  haiku:
+    input: 0.80
+    output: 4.00
+
+# Cooldown: After a model upgrade due to high_rework, suppress budget_pressure
+# downgrades for 3 subsequent dispatches to prevent oscillation.
+
+# Routing decision logging
+logging:
+  log_every_decision: true
+  fields: ["timestamp", "agent", "predicted_model", "actual_model", "reason", "signal"]
+  storage: "conductor-state.json.predictive_scaling.routing_log"
+  retention_days: 30

@@ -1,0 +1,29 @@
+# OS / editor
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Working-state files (must never be checked in)
+conductor-state.json
+conductor-state.json.bak*
+conductor-last-status.txt
+*.tmp
+*.bak
+
+# Local environment
+.env
+.env.local
+.envrc
+
+# Build / dependency artifacts
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Logs
+*.log
