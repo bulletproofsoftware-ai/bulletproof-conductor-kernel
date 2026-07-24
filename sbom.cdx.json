@@ -25,9 +25,9 @@
       ],
       "purl": "pkg:generic/conductor-kernel@0.1.0",
       "externalReferences": [
-        {"type": "vcs", "url": "https://github.com/bulletproofsoftware-ai/conductor-kernel"},
-        {"type": "documentation", "url": "https://github.com/bulletproofsoftware-ai/conductor-kernel/blob/main/API.md"},
-        {"type": "security-contact", "url": "https://github.com/bulletproofsoftware-ai/conductor-kernel/blob/main/SECURITY.md"}
+        {"type": "vcs", "url": "https://github.com/bulletproofsoftware-ai/bulletproof-conductor-kernel"},
+        {"type": "documentation", "url": "https://github.com/bulletproofsoftware-ai/bulletproof-conductor-kernel/blob/main/API.md"},
+        {"type": "security-contact", "url": "https://github.com/bulletproofsoftware-ai/bulletproof-conductor-kernel/blob/main/SECURITY.md"}
       ],
       "hashes": [
         {"alg": "SHA-256", "content": "<TBD: computed at release tag from git archive>"}
@@ -35,7 +35,7 @@
     },
     "supplier": {
       "name": "conductor-kernel maintainers",
-      "url": ["https://github.com/bulletproofsoftware-ai/conductor-kernel"]
+      "url": ["https://github.com/bulletproofsoftware-ai/bulletproof-conductor-kernel"]
     },
     "lifecycles": [
       {"phase": "build"},

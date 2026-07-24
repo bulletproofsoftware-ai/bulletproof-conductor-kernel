@@ -27,4 +27,4 @@ Initial release. First OSS-quality contract.
 - `kernel.workflow.gates_evaluate` is deprecated at v0.1.0 in favor of `kernel.workflow.gates_evaluate_and_enforce`; removed at v1.0.0.
 - Default recovery playbook strategies are stubbed; full strategy YAML lands in Phase 2.
 
-[0.1.0]: https://github.com/bulletproofsoftware-ai/conductor-kernel/releases/tag/v0.1.0
+[0.1.0]: https://github.com/bulletproofsoftware-ai/bulletproof-conductor-kernel/releases/tag/v0.1.0
