@@ -5,7 +5,7 @@ description: >
 
   <example>
   Context: User needs to understand a codebase
-  user: "Analyze the Paranoid codebase structure"
+  user: "Analyze the codebase structure"
   assistant: "I'll use the analyze-codebase agent to generate a comprehensive analysis."
   </example>
   <example>
