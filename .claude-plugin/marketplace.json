@@ -9,7 +9,7 @@
       "version": "0.1.0",
       "source": "./",
       "author": { "name": "bulletproofsoftware-ai" },
-      "license": "MIT"
+      "license": "Apache-2.0"
     }
   ]
 }

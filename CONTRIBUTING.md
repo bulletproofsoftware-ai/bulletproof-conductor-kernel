@@ -161,4 +161,4 @@ This project follows the [Contributor Covenant v2.1](https://www.contributor-cov
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License (the same license as the project itself).
+By contributing, you agree that your contributions will be licensed under the Apache-2.0 License (the same license as the project itself).

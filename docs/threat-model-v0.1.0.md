@@ -438,7 +438,7 @@ Before any `git push --tags v0.1.0` to a public remote, these MUST all be true. 
 3. **All 19 agents have `allowed-tools` declared**: `scripts/verify-agent-tools.sh` passes. (Per RC-12 above.)
 4. **SBOM generated and present**: `sbom.cdx.json` exists at repo root, references match installed surface, contains the CycloneDX-required fields per CISA 2025 minimum elements.
 5. **SECURITY.md complete**: all six sections per F-21 / RC-14 (threat model summary, disclosure policy, supported versions, data flows, hardening recommendations, known limitations).
-6. **License declared and dependencies clean**: `LICENSE` is MIT; `requirements.txt` and `package.json` either absent or empty (v0.1.0 ships zero deps per RC-20 architect non-goal).
+6. **License declared and dependencies clean**: `LICENSE` is Apache-2.0; `requirements.txt` and `package.json` either absent or empty (v0.1.0 ships zero deps per RC-20 architect non-goal).
 7. **No private hostnames, IPs, or paths in source**: per the author's pre-release scrub procedure, grep against author-specific home paths (`~/Code/`), the author's git identity, private SSH host IPs, and any internal hostnames. The author's public-organization domain is acceptable in copyright/LICENSE headers but not in code paths. Grep produces zero hits in published files. (This checklist entry intentionally describes the procedure without itself naming the tokens to scrub, so that the document is itself scrub-compliant.)
 8. **Repository hygiene**: `git log --all --format='%H %s' | grep -iE 'wip|fixme|todo|hack|secret|password|token'` produces zero new findings.
 9. **Disclosure email live**: the disclosure mailbox cited in SECURITY.md §17.2 is monitored and responds with auto-ack within 24h. Tested before release.

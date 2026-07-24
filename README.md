@@ -137,7 +137,7 @@ Security issues: see [`SECURITY.md §17.2`](SECURITY.md) for the coordinated dis
 
 ## License
 
-[MIT](LICENSE). The kernel ships with zero direct runtime dependencies, so the SBOM ([`sbom.cdx.json`](sbom.cdx.json)) lists the kernel as a single root component with no transitive dependencies.
+[Apache-2.0](LICENSE). The kernel ships with zero direct runtime dependencies, so the SBOM ([`sbom.cdx.json`](sbom.cdx.json)) lists the kernel as a single root component with no transitive dependencies.
 
 ---
 

@@ -1332,7 +1332,7 @@ Verbatim contents of `conductor-kernel/plugin.json` at v0.1.0:
   "version": "0.1.0",
   "author": { "name": "bulletproofsoftware-ai" },
   "homepage": "https://github.com/bulletproofsoftware-ai/bulletproof-conductor-kernel",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "namespace": "conductor-kernel",
   "exports": {
     "agents": "agents",

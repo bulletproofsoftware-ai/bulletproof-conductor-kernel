@@ -140,4 +140,4 @@ are owned by their respective locations and are removed separately if desired.
 
 ---
 
-MIT © 2026 bulletproofsoftware-ai. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE).
+Apache-2.0 © 2026 bulletproofsoftware-ai. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE).

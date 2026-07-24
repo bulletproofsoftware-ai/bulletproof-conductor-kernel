@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Minimal reference domain plugin showing how a downstream consumer integrates with conductor-kernel. Implements a single 'example' slash command that dispatches a 'example-agent' which delegates validation to conductor-kernel:critic. Read examples/example-domain/README.md before extending.",
   "homepage": "https://github.com/bulletproofsoftware-ai/bulletproof-conductor-kernel/blob/main/examples/example-domain/",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "authors": [
     {
       "name": "conductor-kernel maintainers",

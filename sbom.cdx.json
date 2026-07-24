@@ -21,7 +21,7 @@
       "version": "0.1.0",
       "description": "Domain-agnostic orchestration kernel for multi-agent workflows in Claude Code. Exports orchestration primitives, validators, security agents, and supporting skills consumed by domain plugins.",
       "licenses": [
-        {"license": {"id": "MIT"}}
+        {"license": {"id": "Apache-2.0"}}
       ],
       "purl": "pkg:generic/conductor-kernel@0.1.0",
       "externalReferences": [
@@ -42,7 +42,7 @@
       {"phase": "post-build"}
     ],
     "licenses": [
-      {"license": {"id": "MIT"}}
+      {"license": {"id": "Apache-2.0"}}
     ]
   },
   "components": [],

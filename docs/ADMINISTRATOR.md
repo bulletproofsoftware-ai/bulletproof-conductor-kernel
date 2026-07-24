@@ -185,4 +185,4 @@ stream-mode primitives may gain implementations additively without a major bump.
 
 ---
 
-MIT © 2026 bulletproofsoftware-ai. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE).
+Apache-2.0 © 2026 bulletproofsoftware-ai. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE).

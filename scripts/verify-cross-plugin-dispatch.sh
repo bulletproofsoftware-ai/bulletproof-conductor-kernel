@@ -60,7 +60,7 @@ cat > "$TEST_PLUGIN/plugin.json" <<'JSON'
   "name": "kernel-dispatch-test",
   "version": "0.0.1",
   "description": "Ephemeral test plugin for verifying cross-plugin dispatch of conductor-kernel agents.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "commands": "commands",
   "requires": { "conductor-kernel": ">= 0.1.0" }
 }
