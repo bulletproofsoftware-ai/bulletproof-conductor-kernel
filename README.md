@@ -2,7 +2,11 @@
 
 **Domain-agnostic orchestration kernel for multi-agent workflows in Claude Code.**
 
+![bulletproof-conductor-kernel — overview](docs/media/infographic.png)
+
 `conductor-kernel` is a Claude Code plugin that exports orchestration primitives, validators, security agents, and supporting skills that downstream **domain plugins** depend on to run tier-classified, gate-enforced, audit-logged multi-agent workflows.
+
+> **Media & docs:** a system-overview [slide deck](media/), [explainer video](media/), and [briefing document](media/system-overview.md) accompany this repo (generated with NotebookLM; raster text may contain minor spelling artifacts). Full docs live in [`docs/`](docs/).
 
 The kernel does **not** expose any slash command of its own. Domain plugins consume the kernel via the qualified-name agent dispatch contract (`conductor-kernel:<agent>`) and the kernel-defined primitives documented in [`API.md`](API.md).
 
