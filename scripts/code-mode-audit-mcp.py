@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import uuid
@@ -166,6 +167,35 @@ def _emit_via_import(event_type: str, payload: dict, agent_id: str) -> dict:
     return {"ok": True, "event_id": event_id, "ts": ts, "path": "import"}
 
 
+def _event_row_exists(event_id: str) -> bool:
+    """Return True only if event_id is present in the audit chain.
+
+    Read-only: this opens audit.db in immutable mode purely to confirm a write
+    landed. It never inserts — direct writes to audit.db are forbidden by the
+    contract documented at the top of this file.
+
+    Fails closed. A missing database, a missing table, or any sqlite error
+    returns False, so the caller raises rather than reporting a successful
+    audit write it cannot substantiate.
+    """
+    db = GOVERNANCE_AUDIT_DB
+    if not db.is_file():
+        return False
+    try:
+        # immutable=1 guarantees we cannot mutate the chain while checking it.
+        con = sqlite3.connect(f"file:{db}?immutable=1", uri=True, timeout=5)
+        try:
+            row = con.execute(
+                "SELECT 1 FROM audit_events WHERE event_id = ? LIMIT 1",
+                (event_id,),
+            ).fetchone()
+            return row is not None
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return False
+
+
 def _emit_via_subprocess(event_type: str, payload: dict, agent_id: str) -> dict:
     """Path (b): shell out to the canonical emitter as a subprocess.
 
@@ -207,9 +237,25 @@ def _emit_via_subprocess(event_type: str, payload: dict, agent_id: str) -> dict:
         timeout=SUBPROCESS_TIMEOUT_SEC,
         check=True,
     )
-    # Surface emitter's stdout for debugging, but ignore its content — the
-    # contract is "exit 0 means written".
-    _ = completed.stdout  # noqa: F841 (kept for breakpoints/inspection)
+
+    # Exit 0 is NOT sufficient proof that the event was recorded.
+    #
+    # The canonical emitter's __main__ takes a state path as argv[1]; when it
+    # is handed an unrecognised flag it falls through to `sys.exit(0)`
+    # ("emitter must not break anything"). So an emitter without --emit-direct
+    # support exits 0, writes nothing, and this path used to return ok=True —
+    # an audit trail silently dropping the very events it exists to record.
+    #
+    # Confirm the row is actually in audit.db before claiming success, and
+    # fail closed (CISO-002) when it is not.
+    if not _event_row_exists(event_id):
+        raise RuntimeError(
+            "Canonical emitter exited 0 but no audit row was written for "
+            f"event_id={event_id}. The emitter at {CANONICAL_EMITTER_PATH} "
+            "most likely does not implement --emit-direct (its __main__ "
+            "expects a state path and exits 0 on unrecognised arguments). "
+            f"stdout={completed.stdout[:200]!r} stderr={completed.stderr[:200]!r}"
+        )
 
     return {"ok": True, "event_id": event_id, "ts": ts, "path": "subprocess"}
 
