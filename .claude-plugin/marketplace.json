@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "conductor-kernel",
-      "description": "Domain-agnostic orchestration kernel for multi-agent workflows. Exports 19 agents, 14 skills, workflow-mode and stream-mode primitives, audit-emission, memory recall/store, recovery classification. No slash command — consumed by domain plugins (conductor-dev, clue-soc).",
+      "description": "Domain-agnostic orchestration kernel for multi-agent workflows. Exports 19 agents, 14 skills, workflow-mode and stream-mode primitives, audit-emission, memory recall/store, recovery classification. No slash command — consumed by domain plugins (e.g. conductor-dev).",
       "version": "0.1.0",
       "source": "./",
       "author": { "name": "bulletproofsoftware-ai" },

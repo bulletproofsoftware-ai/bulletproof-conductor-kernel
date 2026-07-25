@@ -275,13 +275,21 @@ Sanitization is **fail-closed**: if any of the regex queries fail to execute (e.
 
 The audit event is the source of truth for the critic agent (CHECKPOINT 5 and 6 scans). If the audit event is missing or malformed, the critic surfaces an ADVISORY finding (CHECKPOINT 5) or BLOCKS release (CHECKPOINT 6).
 
-**Step 7 — Notify operator** via `~/.claude/scripts/notify-telegram.sh` (existing helper):
+**Step 7 — Notify operator (optional).** If the operator has set `CONDUCTOR_NOTIFY_HOOK` to the path of an executable, invoke it with the notification message as an argument:
 
 ```text
 Skill promotion candidate ready: <slug>. Review with: /conduct promote-skill <slug>
 ```
 
-Notification is best-effort — failure does NOT block the audit event emission.
+```bash
+if [ -n "${CONDUCTOR_NOTIFY_HOOK:-}" ] && [ -x "$CONDUCTOR_NOTIFY_HOOK" ]; then
+    "$CONDUCTOR_NOTIFY_HOOK" "Skill promotion candidate ready: <slug>. Review with: /conduct promote-skill <slug>" 2>&1 | tail -3
+else
+    echo "No notify hook configured (CONDUCTOR_NOTIFY_HOOK unset) — skipping notification"
+fi
+```
+
+If `CONDUCTOR_NOTIFY_HOOK` is unset, the default, no notification is attempted — this is expected, not an error. An operator could wire this to something like a Telegram bot script, but that is one possible integration among many, not an assumption baked into the agent. Notification is best-effort — a missing or failing hook does NOT block the audit event emission or any other step of this agent's work.
 
 ### Skill Self-Improvement (REQ-CDV-HERMES-011, requires E6 live)
 
@@ -322,7 +330,7 @@ This agent uses the following tools for Section 4 mining (all already in `allowe
 
 - `Read` — reading `.conductor/change-log.jsonl`, existing skill files
 - `Write` — writing to `_proposed/`, `_patches/`, audit-event JSONL
-- Shell execution via the standard kernel pattern — to invoke `skill-mining-helpers.sh`, `change-log-query.sh`, `notify-telegram.sh`. Trajectory Qdrant queries flow through `sm_query_trajectories_by_pattern` (REST + API key); no MCP collection write is performed.
+- Shell execution via the standard kernel pattern — to invoke `skill-mining-helpers.sh`, `change-log-query.sh`, and the optional operator-supplied `$CONDUCTOR_NOTIFY_HOOK`. Trajectory Qdrant queries flow through `sm_query_trajectories_by_pattern` (REST + API key); no MCP collection write is performed.
 
 ## Integration Points
 

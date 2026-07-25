@@ -28,21 +28,24 @@ For all of the above, see the full kernel surface in `API.md`.
 
 - Claude Code installed and authenticated (>= 1.0.0)
 - `conductor-kernel` plugin installed (>= 0.1.0)
-- `governance-plugin` plugin installed (>= 0.1.0)
+- (Optional) `governance-plugin` installed if you want dispatches recorded to a
+  database-backed audit trail; without it, `kernel.audit_emit` writes to a local
+  JSONL fallback file instead and this example works unchanged.
 - (Optional) `claude-memory-mcp` configured if you want the agent to use memory primitives
 
 ---
 
 ## Installation (local development)
 
-From a fresh Claude Code workspace:
+From a fresh Claude Code workspace, with this repository cloned locally:
 
 ```bash
-# 1. Install the kernel (one-time)
-/plugin install /path/to/conductor-kernel
+# 1. Add the marketplace and install the kernel (one-time)
+/plugin marketplace add bulletproofsoftware-ai/bulletproof-conductor-kernel
+/plugin install conductor-kernel@bulletproof-conductor-kernel
 
-# 2. Install this example
-/plugin install /path/to/conductor-kernel/examples/example-domain
+# 2. Install this example (path to your local clone of this repo)
+/plugin install <path-to-this-repo>/examples/example-domain
 
 # 3. Verify both are loaded
 /plugin list
@@ -57,7 +60,7 @@ From a fresh Claude Code workspace:
 
 Open `plugin.json`. Note:
 
-- `peerDependencies` lists `conductor-kernel` and `governance-plugin` — these MUST be installed in the same Claude Code session.
+- `peerDependencies` lists `conductor-kernel` (required) and `governance-plugin` (optional in practice — see Prerequisites above; audit emission falls back to a local JSONL file if it is absent).
 - `exports` tells Claude Code where to find slash commands and agents.
 - `_meta.purpose` documents intent for downstream readers.
 
@@ -108,7 +111,7 @@ Expected output: a two-sentence summary plus the SHA-256 of this file, validated
 ## How to extend (build your own domain)
 
 1. Copy this directory to a new location.
-2. Rename `example-domain` → your domain slug (e.g., `clue-soc`, `acme-platform`).
+2. Rename `example-domain` → your domain slug (e.g., `acme-platform`, `my-soc`).
 3. In `plugin.json`, update `name`, `description`, `keywords`, `_meta`.
 4. Replace `example-agent.md` with the agents you actually need. Each agent declares its `allowed-tools` per kernel RC-12. Start with one agent, grow incrementally.
 5. Replace `example.md` with the slash command your domain exposes. Use the BEGIN_CANONICAL / END_CANONICAL marker pattern from `lib/dispatcher-core.md` for production prose (the example keeps prose inline for legibility).
@@ -127,7 +130,7 @@ A: The kernel-canonical version is at `lib/dispatcher-core.md`. Production domai
 A: This example has no destructive actions, so no human gate fires. If your domain has destructive actions, route them through `kernel.workflow.gates_evaluate_and_enforce` and the kernel will block on HUMAN_GATE per RC-7 / F-07 before allowing state advancement.
 
 **Q: How do I see the audit events?**
-A: They land in `governance-plugin/state/audit.db`. Use the `governance:governance-audit` command to query, or write your own SQL.
+A: If `governance-plugin` is installed, they land in its `state/audit.db` (path resolved by `scripts/lib/paths.sh`); use the `governance:governance-audit` command to query, or write your own SQL. If `governance-plugin` is not installed, the same events are appended to the kernel's local JSONL audit fallback file instead.
 
 **Q: How do I add memory operations?**
 A: Use `mcp__claude-memory__memory_recall` and `mcp__claude-memory__memory_store` (the kernel exposes thin wrappers per `API.md §6`). The kernel auto-injects `domain` on writes, so your memories are scoped per-domain by default (kernel RC-2 / F-05 mitigation).
@@ -139,7 +142,7 @@ A: See `API.md §5` and `lib/stream/`. Stream-mode is out of scope for this exam
 
 ## License
 
-MIT — same as the kernel. See `LICENSE` at the repo root.
+Apache-2.0 — same as the kernel. See `LICENSE` at the repo root.
 
 ---
 

@@ -29,22 +29,21 @@ Most multi-agent Claude Code setups end up reinventing the same five things:
 ## Quick start (30 seconds)
 
 ```bash
-# 1. Install the kernel
-/plugin install /path/to/conductor-kernel
+# 1. Add the marketplace and install the kernel
+/plugin marketplace add bulletproofsoftware-ai/bulletproof-conductor-kernel
+/plugin install conductor-kernel@bulletproof-conductor-kernel
 
-# 2. Install governance-plugin (required dependency for the audit trail)
-/plugin install /path/to/governance-plugin
-
-# 3. (Optional) Install the reference example domain plugin to see the contract in action
-/plugin install /path/to/conductor-kernel/examples/example-domain
-
-# 4. Try the reference example
-/example hello
+# 2. Confirm it's loaded
+/plugin list
 ```
 
-If `/example hello` returns a validated greeting with an audit row in `governance-plugin/state/audit.db`, your kernel is wired correctly.
+`governance-plugin` is an **optional** dependency (see below) — without it, audit
+emission degrades to a local JSONL fallback file and everything else still works.
+If you want the full audit trail, its source (not guaranteed publicly reachable to
+every reader) is at
+[`bulletproofsoftware-ai/bulletproof-governance-plugin`](https://github.com/bulletproofsoftware-ai/bulletproof-governance-plugin).
 
-For a deeper walkthrough, read [`examples/example-domain/README.md`](examples/example-domain/README.md) — total reading time 10 minutes, total integration time ~30 minutes for a new contributor.
+For a deeper walkthrough, read [`examples/example-domain/README.md`](examples/example-domain/README.md) — total reading time 10 minutes, total integration time ~30 minutes for a new contributor. That walkthrough uses the bundled example domain plugin — there is nothing further to install.
 
 ---
 
@@ -73,7 +72,7 @@ That's it. Every other primitive is some variation of this pattern. See [`API.md
 
 ## Architecture overview
 
-The kernel sits beneath domain plugins and above the governance-plugin audit trail:
+The kernel sits beneath domain plugins and above the (optional) governance-plugin audit trail:
 
 ```
    domain plugin (your code)
@@ -82,7 +81,9 @@ The kernel sits beneath domain plugins and above the governance-plugin audit tra
        conductor-kernel  <---- dispatches into kernel-provided agents,
             |                  enforces gates, emits audit, persists state
             v
-       governance-plugin (audit trail, approval gates, manifests)
+       governance-plugin (OPTIONAL — audit trail, approval gates, manifests)
+            |                  absent: audit_emit degrades to a local JSONL
+            v                  fallback file; everything else still works
 ```
 
 Full architecture details, primitive signatures, error codes, schemas, and stability commitments are in [`API.md`](API.md). Read that file before integrating.
@@ -106,17 +107,12 @@ For the threat model, coordinated disclosure policy, data-flow boundaries, and h
 
 ## Installation
 
-### From marketplace (once published)
+```
+/plugin marketplace add bulletproofsoftware-ai/bulletproof-conductor-kernel
+/plugin install conductor-kernel@bulletproof-conductor-kernel
+```
 
-```
-/plugin marketplace install conductor-kernel
-```
-
-### Local development
-
-```
-/plugin install /path/to/conductor-kernel
-```
+Then confirm with `/plugin list`. See [`docs/INSTALL.md`](docs/INSTALL.md) for prerequisites, verification steps, and troubleshooting.
 
 ---
 

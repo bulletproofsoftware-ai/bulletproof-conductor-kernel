@@ -53,6 +53,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 KERNEL_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# shellcheck source=scripts/lib/paths.sh
+. "$KERNEL_ROOT/scripts/lib/paths.sh"
 SCHEMA_PATH="$KERNEL_ROOT/schemas/stream-state.schema.json"
 
 CONFIG_PATH=""
@@ -105,7 +107,7 @@ err_json() {
 # governance-plugin's responsibility, not the kernel's.
 audit_emit() {
   local event_type="$1" payload_json="$2"
-  local audit_db="${AUDIT_DB_OVERRIDE:-$HOME/Code/governance-plugin/state/audit.db}"
+  local audit_db; audit_db="$(kernel_audit_db_path)"
   local event_id ts session_id
   event_id="$(uuidgen 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"
   ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -113,7 +115,7 @@ audit_emit() {
 
   if [ ! -f "$audit_db" ]; then
     # Fallback log so we don't silently lose events when governance not installed.
-    local fallback="$KERNEL_ROOT/.audit-fallback.jsonl"
+    local fallback; fallback="$(kernel_audit_fallback_path)"
     printf '{"event_id":"%s","timestamp":"%s","event_type":"%s","payload":%s}\n' \
       "$event_id" "$ts" "$event_type" "$payload_json" >> "$fallback"
     return 0
@@ -121,7 +123,7 @@ audit_emit() {
 
   if ! command -v sqlite3 >/dev/null 2>&1; then
     printf '{"event_id":"%s","timestamp":"%s","event_type":"%s","payload":%s}\n' \
-      "$event_id" "$ts" "$event_type" "$payload_json" >> "$KERNEL_ROOT/.audit-fallback.jsonl"
+      "$event_id" "$ts" "$event_type" "$payload_json" >> "$(kernel_audit_fallback_path)"
     return 0
   fi
 

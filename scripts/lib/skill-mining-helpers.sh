@@ -49,7 +49,7 @@ set -uo pipefail
 # ---------------------------------------------------------------------------
 SM_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SM_DEFAULT_SKILL_INDEX="${HOME}/.claude/skill-index.json"
-SM_QDRANT_URL="${QDRANT_URL:-http://localhost:6334}"
+SM_QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
 SM_OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 SM_EMBEDDING_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
 

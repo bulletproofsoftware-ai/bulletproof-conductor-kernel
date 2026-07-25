@@ -55,7 +55,7 @@ services:
       - "trajectory"
       - "procedure"
       - "learning"
-    recovery_hint: "cd your Qdrant compose directory && docker compose up -d qdrant"
+    recovery_hint: "Start Qdrant, e.g. `docker run -p 6333:6333 qdrant/qdrant`, or `docker compose up -d qdrant` in your Qdrant compose directory"
 
   n8n:
     description: "n8n workflow automation engine"

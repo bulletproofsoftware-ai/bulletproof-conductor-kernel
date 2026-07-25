@@ -202,22 +202,19 @@ PYTHON_EOF
 }
 
 # ---------------------------------------------------------------------------
-# skill_source_label SKILL_MD_PATH USER_SKILLS_DIR KERNEL_SKILLS_DIR CLUESOC_SKILLS_DIR
-#   Returns the source label: user | kernel | clue-soc | plugin:<name> | unknown
+# skill_source_label SKILL_MD_PATH USER_SKILLS_DIR KERNEL_SKILLS_DIR
+#   Returns the source label: user | kernel | plugin:<name> | external:<dir> | unknown
 # ---------------------------------------------------------------------------
 skill_source_label() {
     local path="$1"
     local user_dir="$2"
     local kernel_dir="$3"
-    local cluesoc_dir="$4"
 
     case "$path" in
         "${user_dir}/"*)
             echo "user" ;;
         "${kernel_dir}/"*)
             echo "kernel" ;;
-        "${cluesoc_dir}/"*)
-            echo "clue-soc" ;;
         */marketplaces/anthropic-agent-skills/*)
             echo "plugin:anthropic-agent-skills" ;;
         */marketplaces/claude-code-plugins/plugins/*/*)
@@ -233,6 +230,16 @@ skill_source_label() {
             local plugin_name
             plugin_name=$(echo "$path" | sed 's|.*/plugins/local/\([^/]*\)/.*|\1|')
             echo "plugin:${plugin_name}" ;;
+        */skills/*)
+            # An operator-declared directory (see $CONDUCTOR_SKILL_DIRS).
+            # Label it with the project directory that contains skills/.
+            local project_name
+            project_name=$(echo "$path" | sed 's|/skills/.*||; s|.*/||')
+            if [ -n "$project_name" ]; then
+                echo "external:${project_name}"
+            else
+                echo "external"
+            fi ;;
         *)
             echo "unknown" ;;
     esac

@@ -17,6 +17,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 KERNEL_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# shellcheck source=scripts/lib/paths.sh
+. "$KERNEL_ROOT/scripts/lib/paths.sh"
 SCHEMA_PATH="$KERNEL_ROOT/schemas/stream-state.schema.json"
 
 STREAM_ID=""
@@ -224,7 +226,7 @@ HTTP_CODE="$(printf '%s' "$RESP" | sed -n 's/.*__HTTP__:\([0-9]*\)/\1/p' | tail 
 # Audit emit
 audit_emit() {
   local event_type="$1" payload_json="$2"
-  local audit_db="${AUDIT_DB_OVERRIDE:-$HOME/Code/governance-plugin/state/audit.db}"
+  local audit_db; audit_db="$(kernel_audit_db_path)"
   [ -f "$audit_db" ] && command -v sqlite3 >/dev/null 2>&1 || return 0
   local event_id ts session_id detail
   event_id="$(uuidgen 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"

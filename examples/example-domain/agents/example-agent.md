@@ -49,7 +49,7 @@ After producing its output, the calling command dispatches `conductor-kernel:cri
 
 `critic` returns `PASS` or `NEEDS_REWORK` per the kernel critic contract. If `NEEDS_REWORK`, the command re-dispatches example-agent with the critic's feedback appended. After three retries without `PASS`, the command surfaces the failure to the user and emits a `failed_after_retries` audit event.
 
-This delegation pattern is the SAME pattern every production domain agent (conductor-dev:architect, clue-soc:detection-author, etc.) uses for validation. The example demonstrates it on the smallest possible surface.
+This delegation pattern is the SAME pattern every production domain agent (for example `conductor-dev:architect`) uses for validation. The example demonstrates it on the smallest possible surface.
 
 ## Failure modes
 

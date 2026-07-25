@@ -27,29 +27,49 @@
 # during the Phase 1 exit-gate run; the procedure is documented in the
 # trailing MANUAL block below.
 #
+# governance-plugin is an OPTIONAL dependency. When it is not installed there
+# is no audit database to inspect, and this check reports SKIP rather than
+# FAIL — a kernel running without governance-plugin is a supported
+# configuration in which audit emission falls back to a local JSONL file.
+#
+# The database path is resolved by scripts/lib/paths.sh and assumes no
+# particular checkout layout. Override with GOVERNANCE_PLUGIN_ROOT or
+# AUDIT_DB_OVERRIDE.
+#
 # Exit codes:
 #   0  — audit.db present, mode 0600, readable
-#   1  — audit.db missing, wrong mode, or unreadable
-#   2  — unexpected error (no governance-plugin install detected)
+#   1  — audit.db present but wrong mode, not a regular file, or unreadable
 #   3  — partial pass: file present and readable but mode could not be checked
 #        (e.g., non-POSIX stat); treated as PASS with warning.
+#  77  — SKIP: no audit database found (governance-plugin not installed)
 
 set -eu
 
-AUDIT_DB="${AUDIT_DB_OVERRIDE:-${HOME}/Code/governance-plugin/state/audit.db}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/paths.sh
+. "${SCRIPT_DIR}/lib/paths.sh"
+
+AUDIT_DB="$(kernel_audit_db_path)"
 
 echo "verify-audit-emission.sh — checking governance audit trail"
 echo "  AUDIT_DB = $AUDIT_DB"
 
 if [ ! -e "$AUDIT_DB" ]; then
   echo ""
-  echo "FAIL (1): audit.db not found at expected path."
-  echo "  Expected: $AUDIT_DB"
-  echo "  Resolution:"
-  echo "    - Confirm governance-plugin is installed at ~/Code/governance-plugin"
-  echo "    - Confirm the kernel SessionStart hook has run at least once"
-  echo "    - Or set AUDIT_DB_OVERRIDE to the correct path"
-  exit 1
+  echo "SKIP (77): no governance audit database at the resolved path."
+  echo "  Resolved: $AUDIT_DB"
+  echo ""
+  echo "  governance-plugin is an OPTIONAL dependency of the kernel. Without it,"
+  echo "  audit emission degrades to a local JSONL fallback and this check has"
+  echo "  nothing to verify — that is a valid configuration, not a failure."
+  echo ""
+  echo "  If you DO run governance-plugin, point this check at its database:"
+  echo "    export GOVERNANCE_PLUGIN_ROOT=/path/to/governance-plugin"
+  echo "  or, to name the file directly:"
+  echo "    export AUDIT_DB_OVERRIDE=/path/to/audit.db"
+  echo ""
+  echo "  See: https://github.com/bulletproofsoftware-ai/bulletproof-governance-plugin"
+  exit 77
 fi
 
 if [ ! -f "$AUDIT_DB" ]; then

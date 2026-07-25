@@ -39,7 +39,7 @@ The kernel is positioned as a secure layer between domain plugins and the govern
 *   **Domain Isolation:** Memory recall requires a mandatory `filters.domain`. The kernel enforces domain isolation internally, preventing one domain from accessing another’s memories.
 
 ### 2. Immutable Audit Trail and State Integrity
-The kernel acts as the sole authoritative source for workflow telemetry.
+The kernel acts as the sole authoritative source for workflow telemetry. `governance-plugin` is an **optional** dependency — when it is installed, `kernel.audit_emit` writes to its HMAC-protected `state/audit.db`; when it is not, audit emission degrades to a local JSONL fallback file and every other kernel capability is unaffected.
 *   **Audit Emission:** The `kernel.audit_emit` primitive is the only component holding the HMAC token required for writes to the `governance-plugin/state/audit.db`. Direct-to-file writes by other plugins are rejected.
 *   **State Machine Enforcement:** The `state_advance` primitive is the only legal way to mutate workflow state. A `PostToolUse` hook serves as a filesystem backstop, validating that state mutations conform to schemas and were not written directly to the JSON file.
 

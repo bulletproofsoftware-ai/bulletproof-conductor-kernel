@@ -11,6 +11,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 KERNEL_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# shellcheck source=scripts/lib/paths.sh
+. "$KERNEL_ROOT/scripts/lib/paths.sh"
 
 STREAM_ID=""
 REASON=""
@@ -50,7 +52,7 @@ PAUSE_STATE="$(printf '{"paused":true,"paused_at":"%s","paused_by":"%s","reason"
 # Audit
 audit_emit() {
   local event_type="$1" payload_json="$2"
-  local audit_db="${AUDIT_DB_OVERRIDE:-$HOME/Code/governance-plugin/state/audit.db}"
+  local audit_db; audit_db="$(kernel_audit_db_path)"
   [ -f "$audit_db" ] && command -v sqlite3 >/dev/null 2>&1 || return 0
   local event_id ts session_id detail
   event_id="$(uuidgen 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"

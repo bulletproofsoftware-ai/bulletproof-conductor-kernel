@@ -10,15 +10,19 @@
 #
 # Defaults:
 #   --output  ~/.claude/skill-index.json
+#             (override with --output or $CONDUCTOR_SKILL_INDEX)
 #   Sources   (in walk order):
 #     1. ~/.claude/skills/
-#     2. ~/Code/conductor-kernel/skills/
-#     3. ~/Code/clue-soc/skills/
-#     4. ~/Code/conductor-dev/skills/  (tolerated — may not exist)
-#     5. ~/.claude/plugins/marketplaces/*/plugins/*/skills/
-#     6. ~/.claude/plugins/local/*/skills/
-#     7. ~/.claude/plugins/marketplaces/anthropic-agent-skills/skills/
+#     2. This kernel's own skills/ directory (resolved from the plugin root)
+#     3. Any directory listed in $CONDUCTOR_SKILL_DIRS (colon-separated) —
+#        this is how sibling plugins' skills get indexed
+#     4. ~/.claude/plugins/marketplaces/*/plugins/*/skills/
+#     5. ~/.claude/plugins/local/*/skills/
+#     6. ~/.claude/plugins/marketplaces/anthropic-agent-skills/skills/
 #     Plus any dirs passed via --source
+#
+# No sibling-plugin checkout layout is assumed. If you keep other plugins
+# elsewhere, point $CONDUCTOR_SKILL_DIRS at their skills/ directories.
 #
 # Exit codes:
 #   0  success
@@ -37,17 +41,19 @@ GENERATOR_VERSION="1.0.0"
 # Source shared helpers
 # shellcheck source=lib/skill-index-helpers.sh
 source "${SCRIPT_DIR}/lib/skill-index-helpers.sh"
+# shellcheck source=lib/paths.sh
+source "${SCRIPT_DIR}/lib/paths.sh"
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-OUTPUT_FILE="${HOME}/.claude/skill-index.json"
-FALLBACK_OUTPUT="~/Code/conductor-dev/proposals/skill-index.json"
+OUTPUT_FILE="${CONDUCTOR_SKILL_INDEX:-${HOME}/.claude/skill-index.json}"
+# Written only when the primary output is unwritable. Kept under the kernel's
+# own state dir so it never depends on a sibling checkout existing.
+FALLBACK_OUTPUT="$(kernel_state_dir)/skill-index.json"
 
 USER_SKILLS_DIR="${HOME}/.claude/skills"
-KERNEL_SKILLS_DIR="${HOME}/Code/conductor-kernel/skills"
-CLUESOC_SKILLS_DIR="${HOME}/Code/clue-soc/skills"
-CONDUCTOR_DEV_SKILLS_DIR="${HOME}/Code/conductor-dev/skills"
+KERNEL_SKILLS_DIR="$(kernel_root)/skills"
 
 # Directories to skip (basename match)
 SKIP_DIRS=("archive" "_proposed" "_rejected" "_patches" ".git" "node_modules")
@@ -141,9 +147,15 @@ PYTHON_EOF
 SOURCES=(
     "$USER_SKILLS_DIR"
     "$KERNEL_SKILLS_DIR"
-    "$CLUESOC_SKILLS_DIR"
-    "$CONDUCTOR_DEV_SKILLS_DIR"
 )
+
+# Operator-declared extra skill directories (colon-separated). This is how
+# sibling plugins are indexed without assuming any checkout layout.
+if [[ -n "${CONDUCTOR_SKILL_DIRS:-}" ]]; then
+    while IFS= read -r _dir; do
+        [[ -n "$_dir" ]] && SOURCES+=("$_dir")
+    done < <(printf '%s\n' "${CONDUCTOR_SKILL_DIRS}" | tr ':' '\n')
+fi
 
 # Marketplace: anthropic-agent-skills (skills/ at top level)
 ANTHROPIC_SKILLS="${HOME}/.claude/plugins/marketplaces/anthropic-agent-skills/skills"
@@ -248,7 +260,7 @@ for skill_path in "${DEDUPED_PATHS[@]}"; do
     fi
 
     # Source label
-    source_label="$(skill_source_label "$skill_path" "$USER_SKILLS_DIR" "$KERNEL_SKILLS_DIR" "$CLUESOC_SKILLS_DIR")"
+    source_label="$(skill_source_label "$skill_path" "$USER_SKILLS_DIR" "$KERNEL_SKILLS_DIR")"
 
     # Size estimate
     skill_size_bytes="$(python3 -c "import os; print(os.path.getsize('$skill_path'))" 2>/dev/null || echo "0")"

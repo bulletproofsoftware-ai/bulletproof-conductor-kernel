@@ -2,18 +2,34 @@
 
 **Status**: Architect deliverable, Phase 1.
 **OSS Posture**: This document is the canonical public-facing contract for the open-source release of `conductor-kernel`. Every export here is a stability commitment.
-**Cross-references**: Authoritative source PRD-20-Conductor-Kernel-CLUE.md §3.1-3.4, §4 REQ-KER-001..020, §5, §6, §8, §10. Resolutions in `directive-resolutions.md`. BRD tracker at `<your-project-root>/BRD-tracker.json`.
+
+> **A note on "CLUE" / `clue-soc` references.**
+> This document was written against two consumers: `conductor-dev` (a development
+> workflow plugin) and **CLUE / `clue-soc`, a hypothetical SOC domain plugin used
+> throughout as a worked second-domain example**. `clue-soc` is **not part of this
+> release and is not publicly available**. Wherever it appears, read it as
+> "some second domain plugin that consumes this kernel" — it illustrates why a
+> given primitive is domain-agnostic. Nothing in the kernel requires it, and no
+> kernel behaviour depends on it existing.
+>
+> Likewise, references to internal requirement identifiers (`REQ-…`, `RC-…`,
+> `PRD §…`) are provenance markers from the kernel's own design process. They
+> are retained so each contract can be traced to its rationale; they are not
+> documents you need, and no external artifact is required to use this API.
 
 ---
 
 ## 1. Module Structure
 
+Paths below are relative to the plugin root. The kernel does not assume any
+particular checkout location.
+
 ```
-~/Code/conductor-kernel/
+conductor-kernel/
 ├── plugin.json                          # marketplace manifest (see §11)
 ├── API.md                                # this file, sanitized for OSS
 ├── CHANGELOG.md                          # semver release notes
-├── LICENSE                               # MIT
+├── LICENSE                               # Apache-2.0
 ├── README.md                             # OSS landing page
 ├── SECURITY.md                           # threat model + responsible disclosure
 ├── agents/                               # 19 domain-agnostic agents (§2)
@@ -1067,7 +1083,7 @@ ERRORS:
   KER-MR-005 cross_domain_recall_forbidden (RC-2: filters.domain != caller_domain — use recall_cross_domain)
 ```
 
-**Contract**: SOC-specific Qdrant collections (clue_episodic, clue_asset_graph, etc.) per REQ-CLU-033 use **direct Qdrant HTTP at :6334**, NOT this primitive — because memory-mcp does not accept a collection parameter (verified at `~/Code/claude-memory-mcp/src/index.ts:380-403`). The kernel does NOT export a primitive for direct-Qdrant access; that's clue-soc's responsibility. Direct-Qdrant clue-soc accesses do NOT pass through this kernel primitive and therefore are scoped by Qdrant collection name, not by the kernel's domain filter.
+**Contract**: A domain plugin that needs its own Qdrant collections talks to Qdrant directly over HTTP (default `http://localhost:6333`, override with `QDRANT_URL`) rather than through this primitive, because the memory MCP tool does not accept a collection parameter. The kernel does NOT export a primitive for direct-Qdrant access; that is the domain plugin's responsibility. Such direct accesses do not pass through this kernel primitive and are therefore scoped by Qdrant collection name, not by the kernel's domain filter.
 
 #### `kernel.memory_recall_cross_domain(query, domains, justification) → memories` — RESERVED namespace, RC-2 / F-05
 
@@ -1461,26 +1477,36 @@ Per REQ-XCT-014, before any public push:
 4. `conductor-kernel:secrets-lifecycle` self-scan run on the kernel repo.
 5. Sign-off entry recorded in `governance-plugin/state/audit.db` with event_type `oss.release_review`.
 
-### 12.4 License — MIT (REQ-XCT-012)
+### 12.4 License — Apache-2.0
 
-Per directive D2-4, kernel ships MIT from v0.1.0. Legal review of bundled dependencies is a Phase 8 deliverable; it MAY result in v0.1.0 → v0.2.0 if any dependency requires a different license. Domain plugins remain private until separately authorized.
+The kernel ships under Apache-2.0 (see `LICENSE` and `NOTICE`).
 
 ---
 
 ## 13. Phase 1 Exit Gate — Verification Procedure
 
-Per PRD §8 Phase 1 Exit Criteria, four conditions must be verified before Phase 2 may proceed. Commands below are the exact verification procedure that Phase 1 QA + Phase 1 critic execute.
+Four conditions are verified before the kernel is considered releasable. The
+commands below are the verification procedure QA and the critic execute.
+
+All commands run **from the root of your clone** — no particular checkout
+location is assumed. Set `KERNEL` once and the rest follow:
+
+```bash
+KERNEL=$(pwd)   # run from the root of your conductor-kernel clone
+```
 
 ### 13.1 Gate (a): Kernel installable as Claude Code plugin
 
 ```bash
-# In a fresh Claude Code environment with only governance-plugin + claude-memory-mcp:
-cd ~/Code/conductor-kernel
 ls plugin.json agents skills schemas lib templates hooks
-# Then in Claude Code:
-/plugin install ~/Code/conductor-kernel
-/plugin list | grep -q "conductor-kernel"
-# Expected: "conductor-kernel  0.1.0  enabled"
+```
+
+Then, in Claude Code, install from the marketplace:
+
+```
+/plugin marketplace add bulletproofsoftware-ai/bulletproof-conductor-kernel
+/plugin install conductor-kernel@bulletproof-conductor-kernel
+/plugin list
 ```
 
 PASS if the plugin shows up in `/plugin list` with the correct version and is enabled.
@@ -1488,8 +1514,9 @@ PASS if the plugin shows up in `/plugin list` with the correct version and is en
 ### 13.2 Gate (b): Cross-plugin agent dispatch — REQ-KER-005
 
 ```bash
-# Create minimal sibling plugin for the test:
-TEST_PLUGIN=~/Code/kernel-dispatch-test
+# Create a minimal sibling plugin for the test. TEST_PLUGIN defaults to a
+# directory under the kernel's state dir; override it to taste.
+TEST_PLUGIN="${TEST_PLUGIN_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/conductor-kernel/kernel-dispatch-test}"
 mkdir -p "$TEST_PLUGIN"/{commands,agents}
 cat > "$TEST_PLUGIN/plugin.json" <<EOF
 {
@@ -1514,7 +1541,7 @@ EOF
 #  2. /kdt-test
 #  3. Reads result, asserts output schema matches critic's expected output
 #  4. Asserts audit.db has event_type=agent.dispatch with agent="conductor-kernel:critic"
-bash ~/Code/conductor-kernel/scripts/verify-cross-plugin-dispatch.sh
+bash "$KERNEL/scripts/verify-cross-plugin-dispatch.sh"
 # Expected: PASS — cross-plugin dispatch works; audit event recorded.
 ```
 
@@ -1523,25 +1550,27 @@ PASS if exit 0 with audit entry visible.
 ### 13.3 Gate (c): Audit emission works — REQ-KER-018
 
 ```bash
-bash ~/Code/conductor-kernel/scripts/verify-audit-emission.sh
+bash "$KERNEL/scripts/verify-audit-emission.sh"
 # This script (v0.1.0 scope):
-#  1. Confirms audit.db exists at the canonical path (~/Code/governance-plugin/state/audit.db)
+#  1. Resolves the governance audit.db (GOVERNANCE_PLUGIN_ROOT / AUDIT_DB_OVERRIDE,
+#     else an XDG state path) and confirms it exists. Exits 77 (SKIP) when
+#     governance-plugin is not installed — that is a supported configuration.
 #  2. Confirms file mode is 0600 (RC-5)
 #  3. Reports row count (best-effort via sqlite3 if available)
-# Expected: exit 0 with PASS message.
+# Expected: exit 0 (PASS) when governance-plugin is installed, or 77 (SKIP) when it is not.
 #
 # The full Ed25519 round-trip assertion is deferred to v0.2.0 once the
 # signing layer ships in governance-plugin (SECURITY.md §17.6).
 ```
 
-PASS if the file is present at mode 0600 and readable.
+PASS if the file is present at mode 0600 and readable, or SKIP (77) when governance-plugin is not installed.
 
 ### 13.4 Gate (d): API.md complete and reviewed
 
 ```bash
 # Manual checklist (Phase 1 critic verifies):
-test -f ~/Code/conductor-kernel/API.md
-test -f ~/Code/conductor-kernel/SECURITY.md   # RC-14: SECURITY.md required at release
+test -f "$KERNEL/API.md"
+test -f "$KERNEL/SECURITY.md"   # RC-14: SECURITY.md required at release
 # Required sections (grep against this spec file):
 for section in \
   "Module Structure" \
@@ -1558,7 +1587,7 @@ for section in \
   "OSS Readiness" \
   "Phase 1 Exit Gate" \
   "SECURITY.md"; do
-    grep -q "^## .*$section" ~/Code/conductor-kernel/API.md || { echo "MISSING: $section"; exit 1; }
+    grep -q "^## .*$section" "$KERNEL/API.md" || { echo "MISSING: $section"; exit 1; }
 done
 # Verify SECURITY.md has the six required subsections per RC-14:
 for sub in \
@@ -1568,7 +1597,7 @@ for sub in \
   "Data Flow" \
   "Hardening Recommendations" \
   "Known Limitations"; do
-    grep -q "$sub" ~/Code/conductor-kernel/SECURITY.md || { echo "MISSING: SECURITY.md §$sub"; exit 1; }
+    grep -q "$sub" "$KERNEL/SECURITY.md" || { echo "MISSING: SECURITY.md §$sub"; exit 1; }
 done
 echo "All §sections present."
 ```

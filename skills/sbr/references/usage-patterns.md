@@ -102,7 +102,7 @@ When citing a retrieved example to the operator or in agent output, **always inc
 
 | Symptom | Cause | Caller action |
 |---------|-------|---------------|
-| Connection refused on `localhost:6334` | Qdrant not running | Proceed without SBR. Log a one-line note. |
+| Connection refused on `localhost:6333` | Qdrant not running | Proceed without SBR. Log a one-line note. |
 | Connection refused on `localhost:11434` | Ollama not running | Proceed without SBR. Log a one-line note. |
 | Embedding response missing `embedding` field | Ollama model not pulled — run `ollama pull nomic-embed-text` | Same as above. |
 | Search returns 404 | Collection does not exist yet | Treat as empty result. SBR has not been seeded. |

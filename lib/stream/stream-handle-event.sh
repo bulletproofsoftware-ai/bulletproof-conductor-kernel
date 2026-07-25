@@ -23,6 +23,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 KERNEL_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# shellcheck source=scripts/lib/paths.sh
+. "$KERNEL_ROOT/scripts/lib/paths.sh"
 
 STREAM_ID=""
 EVENT_FILE=""
@@ -62,7 +64,7 @@ err_json() {
 
 audit_emit() {
   local event_type="$1" payload_json="$2"
-  local audit_db="${AUDIT_DB_OVERRIDE:-$HOME/Code/governance-plugin/state/audit.db}"
+  local audit_db; audit_db="$(kernel_audit_db_path)"
   local event_id ts session_id
   event_id="$(uuidgen 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"
   ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -77,7 +79,7 @@ VALUES ('$event_id', '$ts', '$session_id', '$event_type', 'conductor-kernel:stre
 SQL
   else
     printf '{"event_id":"%s","timestamp":"%s","event_type":"%s","payload":%s}\n' \
-      "$event_id" "$ts" "$event_type" "$payload_json" >> "$KERNEL_ROOT/.audit-fallback.jsonl"
+      "$event_id" "$ts" "$event_type" "$payload_json" >> "$(kernel_audit_fallback_path)"
   fi
   printf '%s' "$event_id"
 }

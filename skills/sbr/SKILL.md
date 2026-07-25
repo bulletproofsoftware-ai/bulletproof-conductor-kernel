@@ -32,7 +32,7 @@ Do **not** use SBR for:
 
 ## What This Skill Owns
 
-The `sbr` Qdrant collection at `http://localhost:6334/collections/sbr`.
+The `sbr` Qdrant collection at `http://localhost:6333/collections/sbr`.
 
 This collection is **owned by this skill**, not by `claude-memory-plugin`. The claude-memory `memory_store` tool does not accept a `collection` parameter (verified by reading `claude-memory-mcp/src/index.ts:380-403`), so SBR talks to Qdrant via direct HTTP. SBR points are project-state artifacts (specs that worked) and are intentionally NOT subject to:
 
@@ -61,7 +61,7 @@ Ingestion is performed by `scripts/ingest-sbr.sh` in the conductor-plugin repo. 
    - Sanitizes content using deterministic regex (no LLM call): redacts emails, strips absolute home/system paths, drops candidates that mention `T2-Confidential` or `T3-Restricted`.
    - Computes a SHA-256 content hash and uses it as the Qdrant point ID. Re-running the script is therefore idempotent — already-ingested content is upserted in place, not duplicated.
 3. Generates an embedding for `prompt_text` via Ollama (`POST http://localhost:11434/api/embeddings`, model `nomic-embed-text`).
-4. Upserts the point to Qdrant (`PUT http://localhost:6334/collections/sbr/points`).
+4. Upserts the point to Qdrant (`PUT http://localhost:6333/collections/sbr/points`).
 5. Updates `conductor-state.sbr_state` with run results (count ingested, count skipped, last status).
 
 If Qdrant or Ollama is unreachable, the script fails fast with a clear message and sets `sbr_state.last_run_status` accordingly. Workflows are not crashed — retrospective treats SBR ingest as best-effort.
@@ -71,7 +71,7 @@ If Qdrant or Ollama is unreachable, the script fails fast with a clear message a
 Agents query SBR directly via Qdrant HTTP (no MCP wrapper):
 
 1. Generate an embedding for the natural-language query using the same Ollama model.
-2. POST `http://localhost:6334/collections/sbr/points/search` with the query vector, `limit`, and optional `filter` (by `agent`, `project`, or `domain`).
+2. POST `http://localhost:6333/collections/sbr/points/search` with the query vector, `limit`, and optional `filter` (by `agent`, `project`, or `domain`).
 3. Apply the consumer's similarity threshold (default 0.75 — see `references/usage-patterns.md` for guidance).
 4. For each result above threshold, return `spec_summary` + `outcome_validation_id` + similarity. Only retrieve the full `prompt_text` when the operator or downstream agent explicitly asks for the prompt body.
 

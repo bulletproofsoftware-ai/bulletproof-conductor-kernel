@@ -1,6 +1,16 @@
 # Qdrant HTTP Client Reference for SBR
 
-The SBR skill talks directly to Qdrant over HTTP. This reference documents every endpoint, request shape, and response shape the skill uses. All examples are runnable as-is against a default local Qdrant install (`docker run -p 6334:6333 qdrant/qdrant` or the existing `your Qdrant compose directory` stack used by `claude-memory-plugin`).
+The SBR skill talks directly to Qdrant over HTTP. This reference documents every endpoint, request shape, and response shape the skill uses. All examples are runnable as-is against a default local Qdrant install:
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+**Port.** Examples use `http://localhost:6333`, Qdrant's documented default REST port. If you publish Qdrant on a different host port, set `QDRANT_URL` and substitute it wherever the examples say `http://localhost:6333`:
+
+```bash
+export QDRANT_URL=http://localhost:7333
+```
 
 ## Endpoints Used
 
@@ -47,7 +57,7 @@ The `embedding` array is exactly 768 floats. Extract it with `jq -r '.embedding'
 Run this before first ingestion. Subsequent runs of the ingest script should `GET /collections/sbr` first; if the collection exists, skip creation.
 
 ```bash
-curl -s -X PUT http://localhost:6334/collections/sbr \
+curl -s -X PUT http://localhost:6333/collections/sbr \
   -H 'Content-Type: application/json' \
   -d '{
     "vectors": {
@@ -70,7 +80,7 @@ If the collection already exists, Qdrant returns `400 Bad Request` with a messag
 A single upsert call accepts an array of points. Each point has an `id`, a `vector`, and a `payload` matching `sbr-payload-schema.yaml`.
 
 ```bash
-curl -s -X PUT http://localhost:6334/collections/sbr/points \
+curl -s -X PUT http://localhost:6333/collections/sbr/points \
   -H 'Content-Type: application/json' \
   -d '{
     "points": [
@@ -112,7 +122,7 @@ QUERY_VEC=$(curl -s -X POST http://localhost:11434/api/embeddings \
   | jq -c '.embedding')
 
 # 2. Search the sbr collection
-curl -s -X POST http://localhost:6334/collections/sbr/points/search \
+curl -s -X POST http://localhost:6333/collections/sbr/points/search \
   -H 'Content-Type: application/json' \
   -d "{
     \"vector\": $QUERY_VEC,
@@ -180,7 +190,7 @@ To allow cross-project results but bias toward own project, do two searches and 
 The search endpoint returns truncated payloads when `with_payload` lists specific keys. To fetch the full prompt body for one result:
 
 ```bash
-curl -s -X POST http://localhost:6334/collections/sbr/points \
+curl -s -X POST http://localhost:6333/collections/sbr/points \
   -H 'Content-Type: application/json' \
   -d '{
     "ids": ["a3f1e9b2c4d56789..."],
@@ -197,7 +207,7 @@ Before ingestion or retrieval, the skill (or the ingest script) should perform a
 
 ```bash
 # Qdrant
-curl -s -o /dev/null -w '%{http_code}' http://localhost:6334/collections   # expect 200
+curl -s -o /dev/null -w '%{http_code}' http://localhost:6333/collections   # expect 200
 # Ollama
 curl -s -o /dev/null -w '%{http_code}' http://localhost:11434/api/tags     # expect 200
 ```

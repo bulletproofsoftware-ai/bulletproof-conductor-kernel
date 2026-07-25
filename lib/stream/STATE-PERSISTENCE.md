@@ -100,7 +100,7 @@ pip3 install jsonschema jsonpatch
 
 | Symptom | Error code | Resolution |
 |---------|-----------|-----------|
-| Qdrant unreachable on first ensure_collection | `KER-SI-001` | Verify `QDRANT_URL` (default `http://localhost:6333`; falls back to `:6334`). Confirm `docker compose ps` in `your Qdrant compose directory`. |
+| Qdrant unreachable on first ensure_collection | `KER-SI-001` | Verify `QDRANT_URL` (default `http://localhost:6333`). Confirm Qdrant is running and reachable at that URL. |
 | state_get on non-existent stream | `KER-SS-001` | Stream was never initialized via `stream-init.sh`, or stream_id is incorrect. |
 | state_mutate fails schema validation | `KER-SS-002` | Inspect the produced state document; the mutation produced something that violates `stream-state.schema.json`. The previous state is preserved. |
 | state_mutate succeeds but produces invalid downstream | (advisory only) | Without `jsonschema` installed, validation is best-effort. Install `jsonschema` to catch these. |

@@ -64,9 +64,24 @@ pre-condition check.
 
 ## The audit trail (RC-5 / F-03)
 
-- **Location**: `governance-plugin/state/audit.db` (owned by `governance-plugin`,
-  not the kernel).
-- **Properties**: append-only, file mode `0600`, HMAC-token-protected writes.
+`governance-plugin` is an **optional** dependency of the kernel. Its source is at
+[`bulletproofsoftware-ai/bulletproof-governance-plugin`](https://github.com/bulletproofsoftware-ai/bulletproof-governance-plugin),
+which may not be publicly reachable to every reader — that does not block using
+the kernel.
+
+- **Location**: resolved by `scripts/lib/paths.sh` (`kernel_audit_db_path`), in
+  this order:
+  1. `$AUDIT_DB_OVERRIDE` — explicit path, if set.
+  2. `$GOVERNANCE_PLUGIN_ROOT/state/audit.db` — if `GOVERNANCE_PLUGIN_ROOT` is set.
+  3. `${XDG_STATE_HOME:-~/.local/state}/governance-plugin/state/audit.db` —
+     conventional default.
+  - If governance-plugin is not installed, none of these paths exist. Audit
+    emission then degrades to a local JSONL fallback file (see
+    `kernel_audit_fallback_path`, default `<kernel root>/.audit-fallback.jsonl`,
+    overridable via `$CONDUCTOR_AUDIT_FALLBACK`). This is a supported
+    configuration, not an error.
+- **Properties** (when governance-plugin is present): append-only, file mode
+  `0600`, HMAC-token-protected writes.
 - **Single authoritative trail**: `kernel.audit_emit` is the only primitive that
   holds the HMAC token. Direct-to-file writes by peer plugins are rejected at the
   governance write boundary (`AUDIT-001 unsigned_row`).
@@ -77,8 +92,36 @@ Verify the trail:
 
 ```bash
 bash scripts/verify-audit-emission.sh
-# Confirms audit.db exists at the canonical path and is mode 0600.
+# Confirms audit.db exists at the resolved path and is mode 0600 (exit 0),
+# or reports a genuine misconfiguration (exit 1 / advisory exit 3).
+# Exit 77 = SKIP: no audit database found because governance-plugin is not
+# installed. This is a PASS-equivalent, supported configuration, not a failure.
 ```
+
+---
+
+## Environment variables
+
+All external paths are resolved by `scripts/lib/paths.sh`; nothing in the kernel
+assumes a particular checkout layout (e.g. `~/Code/...`). The table below is the
+complete set of environment variables an operator can set.
+
+| Variable | Purpose | Default when unset |
+|---|---|---|
+| `AUDIT_DB_OVERRIDE` | Explicit path to the governance-plugin audit database. Takes priority over `GOVERNANCE_PLUGIN_ROOT`. | Not set — falls through to `GOVERNANCE_PLUGIN_ROOT`, then the conventional path. |
+| `GOVERNANCE_PLUGIN_ROOT` | Root directory of a governance-plugin install; the audit DB is read from `$GOVERNANCE_PLUGIN_ROOT/state/audit.db`. | Not set — falls through to the conventional XDG path. |
+| `CONDUCTOR_STATE_DIR` | Where the kernel keeps data it owns (checkpoints, skill index, audit fallback, etc.), overriding the whole state directory at once. | `${XDG_STATE_HOME:-~/.local/state}/conductor-kernel` |
+| `CONDUCTOR_AUDIT_FALLBACK` | Path to the local JSONL file used for audit events when no governance-plugin audit DB is reachable. | `<kernel root>/.audit-fallback.jsonl` |
+| `QDRANT_URL` | REST endpoint for Qdrant, used by memory and stream-state primitives. | `http://localhost:6333` (Qdrant's documented default port; use a different value only if you remapped the host port) |
+| `CONDUCTOR_SKILL_DIRS` | Colon-separated list of additional directories to scan when building the skill index — how a sibling domain plugin's skills get indexed. | Not set — only `~/.claude/skills`, the kernel's own `skills/`, and discovered marketplace/local plugin dirs are scanned. |
+| `CONDUCTOR_SKILL_INDEX` | Output path for the generated skill index. | `~/.claude/skill-index.json` (or `--output` if passed to `build-skill-index.sh`) |
+| `CONDUCTOR_AUDIT_EMITTER` | Path to an external audit-emitter script/executable consumed by `scripts/code-mode-audit-mcp.py` for code-mode dispatch audit emission. | Not set — code-mode audit emission is skipped with an explanatory message; nothing fails. |
+| `CONDUCTOR_DOC_SYNC_HOOK` | Path to an executable invoked with a generated document's path, used by the `compliance-overview` agent to publish docs to an operator-chosen destination (e.g. a personal notes tool). | Not set (default) — no sync is attempted; this is expected behavior, not a warning. |
+| `CONDUCTOR_NOTIFY_HOOK` | Path to an executable invoked with a message string, used by the `retrospective` agent to notify the operator out-of-band (e.g. a chat bot script). | Not set (default) — no notification is attempted; this is expected behavior, not a warning. |
+| `TEST_PLUGIN_DIR` | Where `scripts/verify-cross-plugin-dispatch.sh` scaffolds its throwaway test plugin. | `$(kernel_state_dir)/kernel-dispatch-test` |
+| `XDG_STATE_HOME` | Standard XDG base-directory variable; used as the parent of the kernel's own state dir and (when `GOVERNANCE_PLUGIN_ROOT` is unset) the conventional governance-plugin state path. | `~/.local/state` |
+
+A missing or failing optional hook (`CONDUCTOR_DOC_SYNC_HOOK`, `CONDUCTOR_NOTIFY_HOOK`, `CONDUCTOR_AUDIT_EMITTER`) never blocks the primary work of the agent or script that consults it — each degrades to a no-op with a one-line log message.
 
 ---
 
@@ -129,7 +172,7 @@ items:
 | Script | Checks |
 |---|---|
 | `scripts/verify-agent-tools.sh` | Every agent under `agents/` declares `allowed-tools`. |
-| `scripts/verify-audit-emission.sh` | `audit.db` present and mode `0600`. |
+| `scripts/verify-audit-emission.sh` | `audit.db` present and mode `0600`; exits 77 (SKIP, a PASS-equivalent) if governance-plugin is not installed. |
 | `scripts/verify-cross-plugin-dispatch.sh` | A sibling plugin can dispatch `conductor-kernel:critic` and an `agent.dispatch` audit row is recorded. |
 | `scripts/ci-dispatcher-diff.sh` | CI drift detector — fails if a domain command's duplicated canonical prose (`BEGIN_CANONICAL`/`END_CANONICAL`) drifts from `lib/dispatcher-core.md` (RC-16 hash gate first, then block diff). |
 

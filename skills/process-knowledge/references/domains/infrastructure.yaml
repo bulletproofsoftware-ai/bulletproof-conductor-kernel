@@ -1,8 +1,22 @@
 # Infrastructure Domain — Process Knowledge
 # SOPs and rules for deployment, Docker, nginx, and system operations
+#
+# ---------------------------------------------------------------------------
+# THESE ARE ILLUSTRATIVE EXAMPLES, NOT AN OPERATIONAL RUNBOOK.
+#
+# The entries below show the SHAPE of a process-knowledge domain file: how to
+# express a rule, an SOP with verifiable steps, and an edge case. The specific
+# hosts, domains, and commands are placeholders written against a generic
+# "Docker behind nginx on a VPS" topology.
+#
+# Replace them with your own before relying on any of it. Every host is a
+# ${PLACEHOLDER} that you are expected to define for your environment; nothing
+# here is verified against your infrastructure.
+# ---------------------------------------------------------------------------
 
 domain: infrastructure
-description: "Infrastructure operations knowledge — Docker, nginx, deployment, monitoring"
+description: "Infrastructure operations knowledge — Docker, nginx, deployment, monitoring (example content)"
+status: example
 
 rules:
   - id: "INFRA-DOCKER-001"
@@ -14,7 +28,7 @@ rules:
     effective_date: "2026-01-01"
     verified_by: "bulletproofsoftware-ai"
     verified_date: "2026-04-16"
-    status: active
+    status: example
     tags: ["docker", "memory", "limits"]
     priority: 2
 
@@ -27,7 +41,7 @@ rules:
     effective_date: "2026-01-01"
     verified_by: "bulletproofsoftware-ai"
     verified_date: "2026-04-16"
-    status: active
+    status: example
     tags: ["docker", "healthcheck", "compose"]
     priority: 2
 
@@ -40,59 +54,41 @@ rules:
     effective_date: "2026-01-01"
     verified_by: "bulletproofsoftware-ai"
     verified_date: "2026-04-16"
-    status: active
+    status: example
     tags: ["ssl", "certbot", "renewal"]
     priority: 1
 
 sops:
+  # EXAMPLE. ${DEPLOY_HOST} is a placeholder for a host you define — there is
+  # no implied SSH alias, and nothing here has been verified against a real
+  # deployment. Adapt the steps to your own topology.
   - id: "INFRA-DEPLOY-SOP-001"
     domain: "infrastructure.deployment"
-    name: "Deploy to h2 (${H2_HOST})"
-    source: "Operational experience"
-    last_verified: "2026-04-15"
-    status: active
+    name: "Deploy a container behind an nginx reverse proxy (example)"
+    source: "Illustrative example"
+    status: example
     steps:
-      - action: "Check CSF allow list for source IP"
-        verification: "ssh h2 'csf -g ${SOURCE_IP}'"
+      - action: "Confirm the deploying host's IP is permitted by the firewall"
+        verification: "ssh ${DEPLOY_HOST} 'csf -g ${SOURCE_IP}'"
+        note: "Substitute your own firewall tooling; csf is one example."
         critical: true
-      - action: "Verify Docker container binds to 127.0.0.1"
+      - action: "Verify the container binds to loopback, not 0.0.0.0"
         verification: "grep '127.0.0.1' docker-compose.yml"
+        note: "The reverse proxy should be the only public listener."
         critical: true
       - action: "Deploy via docker compose"
         verification: "docker compose up -d && docker compose ps"
-      - action: "Test through nginx reverse proxy"
+      - action: "Test through the reverse proxy rather than the container port"
         verification: "curl -s https://${DOMAIN}/health"
         critical: true
-      - action: "Verify Wazuh agent reports the new service"
-        verification: "Check Wazuh dashboard for new service events"
-
-  - id: "INFRA-DEPLOY-SOP-002"
-    domain: "infrastructure.deployment"
-    name: "Deploy to hi (${HI_HOST})"
-    source: "Operational experience"
-    last_verified: "2026-04-15"
-    status: active
-    steps:
-      - action: "Check CSF allow list for source IP"
-        verification: "ssh hi 'csf -g ${SOURCE_IP}'"
-        critical: true
-      - action: "Verify Docker container binds to 127.0.0.1"
-        verification: "grep '127.0.0.1' docker-compose.yml"
-        critical: true
-      - action: "Deploy via docker compose"
-        verification: "docker compose up -d && docker compose ps"
-      - action: "Test through nginx reverse proxy"
-        verification: "curl -s https://${DOMAIN}/health"
-        critical: true
-      - action: "Verify Wazuh agent reports the new service"
-        verification: "Check Wazuh dashboard"
+      - action: "Confirm your monitoring agent reports the new service"
+        verification: "Check your monitoring dashboard for new service events"
 
   - id: "INFRA-BACKUP-SOP-001"
     domain: "infrastructure.backup"
     name: "Qdrant backup procedure"
-    source: "Operational experience"
-    last_verified: "2026-04-10"
-    status: active
+    source: "Illustrative example"
+    status: example
     steps:
       - action: "Create Qdrant snapshot via API"
         verification: "curl -X POST localhost:6333/snapshots"
@@ -112,6 +108,6 @@ edge_cases:
     name: "Docker compose v2 named volumes on remote"
     scenario: "Deploying with named volumes on a remote VPS that already has data"
     standard_behavior: "docker compose up creates volumes if not present"
-    exception: "If volume exists with data from previous version, compose will NOT recreate it. Old data persists. Use 'docker compose down -v' to remove volumes, but this DESTROYS existing data."
-    source: "Operational experience — lost data on hi once by not backing up before volume removal"
-    status: active
+    exception: "If a volume already exists with data from a previous version, compose will NOT recreate it and the old data persists. 'docker compose down -v' removes the volumes, but that DESTROYS the data they hold — always back up first."
+    source: "Illustrative example"
+    status: example

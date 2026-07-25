@@ -11,9 +11,9 @@
 # things:
 #
 #   (a) The MECHANICAL pre-flight that DOES NOT need Claude:
-#       - Scaffolds an ephemeral sibling test plugin at
-#         $HOME/Code/kernel-dispatch-test (idempotent: re-runs leave the
-#         scaffold ready for the manual /plugin install step).
+#       - Scaffolds an ephemeral sibling test plugin under the kernel's state
+#         directory (override with $TEST_PLUGIN_DIR; idempotent: re-runs
+#         leave the scaffold ready for the manual /plugin install step).
 #       - Verifies the scaffold is well-formed (plugin.json valid, commands
 #         dir present, requires-clause references conductor-kernel).
 #
@@ -31,7 +31,12 @@
 set -eu
 
 KERNEL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TEST_PLUGIN="${TEST_PLUGIN_DIR:-$HOME/Code/kernel-dispatch-test}"
+# shellcheck source=lib/paths.sh
+. "${KERNEL_DIR}/scripts/lib/paths.sh"
+
+# Ephemeral scaffold for the manual half of this gate. Lives under the
+# kernel's own state directory so no particular checkout layout is assumed.
+TEST_PLUGIN="${TEST_PLUGIN_DIR:-$(kernel_state_dir)/kernel-dispatch-test}"
 
 echo "verify-cross-plugin-dispatch.sh — Phase 1 gate (b)"
 echo "  KERNEL_DIR  = $KERNEL_DIR"

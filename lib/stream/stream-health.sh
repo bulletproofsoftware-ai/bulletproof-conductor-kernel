@@ -28,6 +28,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 KERNEL_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# shellcheck source=scripts/lib/paths.sh
+. "$KERNEL_ROOT/scripts/lib/paths.sh"
 
 STREAM_ID=""
 WINDOW_SECONDS=3600
@@ -59,7 +61,7 @@ err_json() {
 
 audit_emit() {
   local event_type="$1" payload_json="$2"
-  local audit_db="${AUDIT_DB_OVERRIDE:-$HOME/Code/governance-plugin/state/audit.db}"
+  local audit_db; audit_db="$(kernel_audit_db_path)"
   [ -f "$audit_db" ] && command -v sqlite3 >/dev/null 2>&1 || return 0
   local event_id ts session_id detail
   event_id="$(uuidgen 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"
@@ -90,7 +92,7 @@ SINCE_TS="$(python3 -c "import time,datetime; t=time.time()-$WINDOW_SECONDS; pri
 # Without N8N_API_KEY, we cannot reach n8n directly; emit MANUAL marker with
 # audit-bus-derived metrics only.
 if [ -z "${N8N_API_KEY:-}" ]; then
-  AUDIT_DB="${AUDIT_DB_OVERRIDE:-$HOME/Code/governance-plugin/state/audit.db}"
+  AUDIT_DB="$(kernel_audit_db_path)"
   if [ -f "$AUDIT_DB" ] && command -v sqlite3 >/dev/null 2>&1; then
     AUDIT_METRICS="$(STREAM_ID="$STREAM_ID" SINCE_TS="$SINCE_TS" AUDIT_DB="$AUDIT_DB" python3 <<'PY'
 import sqlite3, os, json

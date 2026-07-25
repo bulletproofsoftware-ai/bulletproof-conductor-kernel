@@ -6,7 +6,8 @@ description: >
   git log, and conductor-state.json — then writing every one of the 27 sections with
   project-specific values, framework status (Required/Voluntary/N/A with justification),
   named risk register, and gap closure tracking. NOT a scaffolder — produces a real
-  first-issue document. Runs in Phase 7 closeout. Triggers Obsidian sync.
+  first-issue document. Runs in Phase 7 closeout. Optionally invokes an operator-configured
+  doc-sync hook after generation.
 
   <example>
   Context: STANDARD-tier conductor workflow has passed completeness validation
@@ -41,7 +42,6 @@ Reads the project, infers compliance posture, identifies project-specific risks,
 |----------|------|---------|
 | `docs/COMPLIANCE-OVERVIEW.md` | Project repo | 27-section auditor-grade compliance summary, all sections substantively filled |
 | `compliance-evidence/` | Project repo (if missing) | Directory + README for evidence artifact storage |
-| Obsidian symlink | `Projects/{ObsidianName}/{project}-docs` | Vault visibility |
 | `conductor-state.json` updated | (in conductor-managed projects) | Records compliance overview generation as completed_task |
 
 ## Protocol
@@ -174,25 +174,28 @@ LINES=$(wc -l < "$DEST")
 [ "$LINES" -lt 800 ] && echo "WARNING: only $LINES lines — likely insufficient for first-pass audit"
 ```
 
-### Step 8: Trigger Obsidian sync
+### Step 8: Optional doc-sync hook
+
+Publishing `docs/COMPLIANCE-OVERVIEW.md` anywhere beyond the project repo (a documentation vault, an internal wiki, a shared drive) is entirely optional and operator-configured. This agent never assumes a destination.
+
+If the operator has set `CONDUCTOR_DOC_SYNC_HOOK` to the path of an executable, that executable is invoked with the generated document's path (and, if supported, the project name) as arguments. If the variable is unset — the default — no sync is attempted, and the agent states this plainly in its output. This is not an error or a warning; it is the expected default behavior.
 
 ```bash
-if [ -x "$HOME/scripts/sync-obsidian-docs.sh" ]; then
-    "$HOME/scripts/sync-obsidian-docs.sh" 2>&1 | tail -3
-fi
-
-# Verify symlink resolves to the actual project location
-PROJECT_BASENAME=$(basename "$PROJECT_ROOT")
-SYMLINK=$(find "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian/Projects" \
-    -maxdepth 2 -name "${PROJECT_BASENAME}-docs" -type l 2>/dev/null | head -1)
-if [ -n "$SYMLINK" ]; then
-    SOURCE_HASH=$(md5 -q "$DEST")
-    OBSIDIAN_HASH=$(md5 -q "$SYMLINK/COMPLIANCE-OVERVIEW.md" 2>/dev/null)
-    [ "$SOURCE_HASH" = "$OBSIDIAN_HASH" ] && echo "Obsidian: visible (hashes match)" || echo "Obsidian: SYMLINK BROKEN — $SYMLINK -> $(readlink "$SYMLINK")"
+if [ -n "${CONDUCTOR_DOC_SYNC_HOOK:-}" ]; then
+    if [ -x "$CONDUCTOR_DOC_SYNC_HOOK" ]; then
+        "$CONDUCTOR_DOC_SYNC_HOOK" "$DEST" "$(basename "$PROJECT_ROOT")" 2>&1 | tail -3
+        if [ $? -ne 0 ]; then
+            echo "Doc-sync hook exited non-zero — continuing (hook is best-effort, not a gate)"
+        fi
+    else
+        echo "CONDUCTOR_DOC_SYNC_HOOK is set but not executable at: $CONDUCTOR_DOC_SYNC_HOOK — skipping sync, continuing"
+    fi
+else
+    echo "No doc-sync hook configured (CONDUCTOR_DOC_SYNC_HOOK unset) — document generated at $DEST only"
 fi
 ```
 
-If the symlink target points to a different filesystem root than the project's actual checkout (operator-specific path layout), the symlink is broken. The fix is to update the operator-side `sync-obsidian-docs.sh` (or equivalent) to handle both root paths. Re-run the sync after the fix.
+The hook is entirely operator-supplied. An operator wiring this into a personal notes tool (for example, an Obsidian vault) can point `CONDUCTOR_DOC_SYNC_HOOK` at a script that copies or symlinks `$DEST` into that tool — but that is one possible integration among many, not a built-in assumption of this agent. A failing or missing hook must never block or fail the agent's primary job of producing `docs/COMPLIANCE-OVERVIEW.md`.
 
 ### Step 9: Commit
 
@@ -222,9 +225,8 @@ Print structured summary:
 |---------|----------|
 | No BRD.md / README.md / package manifest | Halt — agent needs project context to write substance |
 | Existing COMPLIANCE-OVERVIEW.md present | Backup as `.bak`, regenerate; preserve §26 revision history in re-issue mode |
-| Obsidian sync script missing | Continue (advisory warning); operator handles symlink manually |
-| Project not in `get_obsidian_name()` mapping | Continue + advise operator to add case statement |
-| Project lives in unexpected directory | Continue (sync script now handles ~/Code and ~/Documents/Code) |
+| `CONDUCTOR_DOC_SYNC_HOOK` unset | Continue — this is the default; no warning, no error |
+| `CONDUCTOR_DOC_SYNC_HOOK` set but not executable / fails | Continue (log one line); the primary deliverable is unaffected |
 
 ## Anti-Patterns (FORBIDDEN)
 
@@ -245,7 +247,7 @@ Print structured summary:
 | `BRD-tracker.json` | Read | Requirements traceability |
 | Project source files | Read | Architecture, deps, services, frameworks |
 | `git log` | Read | Recent activity, security history |
-| `~/scripts/sync-obsidian-docs.sh` | Invoked | Vault visibility |
+| `$CONDUCTOR_DOC_SYNC_HOOK` (optional, operator-supplied) | Invoked | Best-effort publish of the generated document to an operator-chosen destination |
 | Audit sink | Outbound | Emits `compliance.overview.generated` event |
 
 ## Conductor Workflow Position

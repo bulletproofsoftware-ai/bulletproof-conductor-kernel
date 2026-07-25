@@ -54,17 +54,40 @@ from pathlib import Path
 # ---------- Constants ----------
 
 # Canonical emitter location (Option b subprocess target).
-CANONICAL_EMITTER_PATH = Path(
-    "~/Code/conductor-dev/hooks/scripts/lib/audit_emitter.py"
-)
+#
+# The emitter is provided by a sibling plugin, whose location this server does
+# NOT assume. Operators point at it explicitly:
+#
+#     export CONDUCTOR_AUDIT_EMITTER=/path/to/hooks/scripts/lib/audit_emitter.py
+#
+# When unset, the subprocess fallback is simply unavailable and emission relies
+# on the in-process import path (Option a). If neither is available the tool
+# fails closed per CISO-002 rather than writing to the database directly.
+def _canonical_emitter_path() -> Path | None:
+    raw = os.environ.get("CONDUCTOR_AUDIT_EMITTER", "").strip()
+    if not raw:
+        return None
+    return Path(os.path.expanduser(raw))
+
+
+CANONICAL_EMITTER_PATH = _canonical_emitter_path()
 
 # Governance source-of-truth (referenced only in error messages — this server
 # MUST NOT open this file directly per CISO-002).
-GOVERNANCE_AUDIT_DB = Path(
-    os.path.expanduser(
-        "~/.claude/plugins/cache/governance/governance/0.1.0/state/audit.db"
+def _governance_audit_db() -> Path:
+    override = os.environ.get("AUDIT_DB_OVERRIDE", "").strip()
+    if override:
+        return Path(os.path.expanduser(override))
+    plugin_root = os.environ.get("GOVERNANCE_PLUGIN_ROOT", "").strip()
+    if plugin_root:
+        return Path(os.path.expanduser(plugin_root)) / "state" / "audit.db"
+    state_home = os.environ.get("XDG_STATE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "state"
     )
-)
+    return Path(state_home) / "governance-plugin" / "state" / "audit.db"
+
+
+GOVERNANCE_AUDIT_DB = _governance_audit_db()
 
 # Identifier recorded as agent_id when conductor_audit_emit is invoked without
 # a more specific agent in the payload.
@@ -102,6 +125,13 @@ def _emit_via_import(event_type: str, payload: dict, agent_id: str) -> dict:
     # is missing; the failure surfaces only when a JS sandbox actually calls
     # conductor_audit_emit. That keeps cold-start time low and lets fallback
     # path (b) work even if the importable interface drifts.
+    if CANONICAL_EMITTER_PATH is None:
+        raise FileNotFoundError(
+            "CONDUCTOR_AUDIT_EMITTER is not set, so the canonical audit "
+            "emitter cannot be located. Set it to the path of "
+            "audit_emitter.py provided by your governance plugin."
+        )
+
     sys.path.insert(0, str(CANONICAL_EMITTER_PATH.parent))
     try:
         import audit_emitter  # type: ignore[import-not-found]
@@ -142,6 +172,13 @@ def _emit_via_subprocess(event_type: str, payload: dict, agent_id: str) -> dict:
     Raises subprocess.CalledProcessError or TimeoutExpired on failure —
     caller catches and surfaces audit_emit_unavailable.
     """
+    if CANONICAL_EMITTER_PATH is None:
+        raise FileNotFoundError(
+            "CONDUCTOR_AUDIT_EMITTER is not set, so the canonical audit "
+            "emitter cannot be located. Set it to the path of "
+            "audit_emitter.py provided by your governance plugin."
+        )
+
     if not CANONICAL_EMITTER_PATH.is_file():
         raise FileNotFoundError(
             f"Canonical emitter missing at {CANONICAL_EMITTER_PATH}"

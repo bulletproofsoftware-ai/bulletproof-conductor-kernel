@@ -6,6 +6,15 @@
 
 Verify that a sibling Claude Code plugin can dispatch a kernel agent via the qualified `<plugin>:<agent>` Task subagent_type mechanism, and that the dispatch emits an `agent.dispatch` audit event with `agent="conductor-kernel:critic"`.
 
+This test does not assume any particular checkout layout — the scaffold is
+written under the kernel's own state directory (or `$TEST_PLUGIN_DIR`, if set),
+never under a sibling checkout path.
+
+`governance-plugin` is an **optional** dependency. If it is not installed, skip
+Step 5's audit-row check — `agent.dispatch` events are instead appended to the
+kernel's local JSONL audit fallback file, and the dispatch itself (Steps 3-4) is
+unaffected.
+
 ## Procedure
 
 ### Step 1 — Scaffold (automated)
@@ -14,13 +23,25 @@ Verify that a sibling Claude Code plugin can dispatch a kernel agent via the qua
 bash scripts/verify-cross-plugin-dispatch.sh
 ```
 
-Expected: exit 77 (scaffold-green, MANUAL completion required). Scaffolds `~/Code/kernel-dispatch-test/` with a single `/kdt-test` command.
+Expected: exit 77 (scaffold-green, MANUAL completion required). Scaffolds a
+throwaway test plugin under `$TEST_PLUGIN_DIR` if set, else under the kernel's
+own state directory (`$(kernel_state_dir)/kernel-dispatch-test`, resolved by
+`scripts/lib/paths.sh` — typically `${XDG_STATE_HOME:-~/.local/state}/conductor-kernel/kernel-dispatch-test`),
+with a single `/kdt-test` command. The script prints the resolved scaffold path.
 
 ### Step 2 — Install plugins (manual, inside Claude Code)
 
+If the kernel is not yet installed:
+
 ```
-/plugin install ~/Code/conductor-kernel
-/plugin install ~/Code/kernel-dispatch-test
+/plugin marketplace add bulletproofsoftware-ai/bulletproof-conductor-kernel
+/plugin install conductor-kernel@bulletproof-conductor-kernel
+```
+
+Then install the scaffolded test plugin at the path printed by Step 1:
+
+```
+/plugin install <scaffold-path-from-step-1>
 /plugin list
 ```
 
@@ -45,7 +66,9 @@ Per the critic invariant in API.md §2.1, the response is a structured gap analy
 
 ### Step 5 — Verify audit emission
 
-Inspect `~/Code/governance-plugin/state/audit.db` for an `agent.dispatch` row matching:
+**If governance-plugin is installed**: resolve its audit.db via
+`scripts/lib/paths.sh` (`kernel_audit_db_path`) and inspect it for an
+`agent.dispatch` row matching:
 
 - `agent = "conductor-kernel:critic"`
 - `timestamp` within the last 60 seconds
@@ -53,12 +76,18 @@ Inspect `~/Code/governance-plugin/state/audit.db` for an `agent.dispatch` row ma
 
 If row present → gate (b) PASS.
 
+**If governance-plugin is not installed**: confirm instead that the same event
+was appended to the local JSONL audit fallback file (`kernel_audit_fallback_path`,
+default `<kernel root>/.audit-fallback.jsonl`, overridable via
+`$CONDUCTOR_AUDIT_FALLBACK`). Presence of the fallback row → gate (b) PASS.
+
 ## Failure modes
 
-- `conductor-kernel not installed` → install the kernel; the runtime check in API.md §8.2 should surface this directly.
+- `conductor-kernel not installed` → install the kernel via `/plugin marketplace add bulletproofsoftware-ai/bulletproof-conductor-kernel` then `/plugin install conductor-kernel@bulletproof-conductor-kernel`; the runtime check in API.md §8.2 should surface this directly.
 - `KER-DA-006 namespace_collision` → a different plugin also declares `conductor-kernel:critic`. Uninstall the conflicting plugin and retry.
-- audit row missing → check that `governance-plugin/state/audit.db` is writable and mode 0600.
+- audit row missing (governance-plugin installed) → check that the resolved `audit.db` path is writable and mode 0600.
+- audit row missing (governance-plugin not installed) → check that the resolved JSONL fallback path is writable.
 
 ## Pass criteria
 
-All five steps complete; the audit row is present and well-formed; no errors surfaced.
+All five steps complete; the audit row (database-backed or JSONL fallback, per the operator's configuration) is present and well-formed; no errors surfaced.
