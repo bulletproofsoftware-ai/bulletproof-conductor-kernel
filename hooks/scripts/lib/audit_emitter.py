@@ -324,6 +324,12 @@ def emit_syslog(record, sink_config):
         import ssl
         try:
             ctx = ssl.create_default_context()
+            # create_default_context() still permits TLS 1.0/1.1 on some builds.
+            # Both are deprecated (RFC 8996) and this socket carries audit
+            # records (CodeQL py/insecure-protocol).
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+            ctx.check_hostname = True
+            ctx.verify_mode = ssl.CERT_REQUIRED
             handler.socket = ctx.wrap_socket(handler.socket, server_hostname=host)
         except (ssl.SSLError, OSError) as e:
             handler.close()
