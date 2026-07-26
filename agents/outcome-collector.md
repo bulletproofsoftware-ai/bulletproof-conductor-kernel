@@ -37,7 +37,7 @@ Passively observes existing system signals to compute outcome metrics — no new
 | **Recovery Rate** | % of failed tasks recovered by self-healing | Recovery audit events (Self-Healing Workflows) |
 | **Context Efficiency** | Useful output tokens per input token consumed (defined as: tokens in accepted, non-reverted outputs / total input tokens) | Token tracking + output assessment |
 | **Cost Per Successful Outcome** | Total cost / successful completions | Economics + completion data |
-| **Capacity Hours Released** | Estimated human wall-clock hours saved per workflow vs. manual baseline. Distinct from TTR (system time): this is *human time NOT spent* — Marc-hours freed for higher-value work. | (baseline_manual_hours - operator_hours_in_loop) per workflow, summed |
+| **Capacity Hours Released** | Estimated human wall-clock hours saved per workflow vs. manual baseline. Distinct from TTR (system time): this is *human time NOT spent* — operator-hours freed for higher-value work. | (baseline_manual_hours - operator_hours_in_loop) per workflow, summed |
 | **Escalation Rate** | % of workflows that bounced back to the operator for clarification, re-direction, or override mid-flight (not counting normal approval gates) | Count of `agent.escalate` + `human_gate.unscheduled` events / total workflows |
 
 ## Collection Protocol
