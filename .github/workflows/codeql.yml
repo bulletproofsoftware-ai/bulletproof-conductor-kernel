@@ -33,7 +33,12 @@ jobs:
       fail-fast: false
       matrix:
         language:
-          - javascript-typescript
+          # javascript-typescript is deliberately absent. The only .js file in
+          # this repo is scripts/lib/code-mode-template.js, which is a template
+          # full of <<PLACEHOLDER>> tokens rather than parseable JavaScript, so
+          # CodeQL built an empty database, reported results_count=0 and exited
+          # failure. That zero read as "no findings" when it actually meant "no
+          # code analysed". Re-add this language if real JavaScript lands here.
           - python
 
     steps:
