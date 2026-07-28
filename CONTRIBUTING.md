@@ -149,7 +149,7 @@ Researchers who follow the policy receive a non-prosecution commitment for good-
 
 ## Releasing (maintainers only)
 
-Refer to [`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md). The 12-item OSS-readiness checklist MUST be all green before any `git push --tags v<version>` to the public remote.
+The OSS-readiness checklist MUST be all green before any `git push --tags v<version>` to the public remote: tests green, SBOM regenerated, SECURITY.md contact current, no secrets in history, LICENSE and NOTICE present, CHANGELOG updated.
 
 ---
 
