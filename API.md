@@ -1716,16 +1716,19 @@ Two- to three-page summary of the security threat model for `conductor-kernel`. 
 ### 17.2 Coordinated Disclosure Policy
 
 ```
-Report security issues privately to: <TBD: disclosure mailbox must be live before v0.1.0 public release>
-GPG key:                              <TBD: fingerprint to be published before v0.1.0 public release>
+Report security issues privately to: GitHub private vulnerability reporting (Security tab),
+                                      or marc@bulletproofsoftware.ai
+GPG key:                              not published; use GitHub private vulnerability
+                                      reporting for an encrypted channel
 Auto-acknowledgment SLA:              24 hours (monitored mailbox)
 Triage SLA:                           14 days (severity classification + remediation plan)
 Public disclosure SLA:                90 days (responsible-disclosure window; mutual agreement may extend)
 Safe-harbor language:                 Researchers who follow this policy receive non-prosecution commitment for good-faith research.
-Hall of fame:                         <TBD: researcher-opt-in page>
+Credit:                               reporters are credited in the GitHub security
+                                      advisory unless they ask otherwise
 ```
 
-The disclosure mailbox, GPG key, and hall-of-fame page MUST be live and tested before v0.1.0 release tag (per CISO §7 item 9). See SECURITY.md §17.2 for the canonical disclosure-policy contract.
+The disclosure channel is live: GitHub private vulnerability reporting is enabled on this repository, with marc@bulletproofsoftware.ai as the fallback. See SECURITY.md §17.2 for the canonical disclosure-policy contract.
 
 ### 17.3 Supported Versions
 
